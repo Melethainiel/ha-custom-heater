@@ -14,22 +14,24 @@
       },
       "add_room": {
         "title": "Add a room",
-        "description": "Configure a room for intelligent heating",
+        "description": "Configure a room for intelligent heating. Rooms added: {num_rooms}",
         "data": {
           "name": "Room name",
-          "id": "Room ID",
+          "id": "Room ID (optional)",
           "type": "Room type",
           "radiateur": "Radiator (climate entity)",
           "sonde": "Temperature sensor (optional)",
           "temp_confort": "Comfort temperature",
           "temp_eco": "Eco temperature",
-          "temp_hors_gel": "Frost protection temperature"
+          "temp_hors_gel": "Frost protection temperature",
+          "skip_room": "Finish configuration (skip adding more rooms)"
         }
       }
     },
     "error": {
       "no_calendar": "No calendar entity found",
       "no_trackers": "No device trackers found",
+      "no_rooms": "You must add at least one room",
       "invalid_entity": "Invalid entity selected"
     },
     "abort": {
@@ -39,13 +41,66 @@
   "options": {
     "step": {
       "init": {
-        "title": "Options",
+        "title": "Chauffage Intelligent Options",
         "data": {
-          "add_room": "Add a room",
-          "modify_room": "Modify a room",
-          "delete_room": "Delete a room"
+          "action": "Select an action"
+        }
+      },
+      "add_room": {
+        "title": "Add a room",
+        "data": {
+          "name": "Room name",
+          "id": "Room ID (optional)",
+          "type": "Room type",
+          "radiateur": "Radiator (climate entity)",
+          "sonde": "Temperature sensor (optional)",
+          "temp_confort": "Comfort temperature",
+          "temp_eco": "Eco temperature",
+          "temp_hors_gel": "Frost protection temperature"
+        }
+      },
+      "select_room": {
+        "title": "Select a room",
+        "data": {
+          "room": "Room to modify"
+        }
+      },
+      "modify_room": {
+        "title": "Modify room: {room_name}",
+        "data": {
+          "name": "Room name",
+          "type": "Room type",
+          "radiateur": "Radiator (climate entity)",
+          "sonde": "Temperature sensor (optional)",
+          "temp_confort": "Comfort temperature",
+          "temp_eco": "Eco temperature",
+          "temp_hors_gel": "Frost protection temperature"
+        }
+      },
+      "delete_room": {
+        "title": "Delete a room",
+        "description": "Warning: This action cannot be undone.",
+        "data": {
+          "room": "Room to delete",
+          "confirm": "Confirm deletion"
+        }
+      },
+      "settings": {
+        "title": "Global settings",
+        "data": {
+          "calendar": "Google Calendar",
+          "presence_trackers": "Presence device trackers",
+          "update_interval": "Update interval (minutes)",
+          "security_factor": "Preheat security factor",
+          "min_preheat_time": "Minimum preheat time (minutes)"
         }
       }
+    },
+    "error": {
+      "room_exists": "A room with this ID already exists"
+    },
+    "abort": {
+      "no_rooms": "No rooms configured"
     }
   }
 }

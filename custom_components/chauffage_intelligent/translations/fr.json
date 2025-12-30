@@ -14,22 +14,24 @@
       },
       "add_room": {
         "title": "Ajouter une pièce",
-        "description": "Configurez une pièce pour le chauffage intelligent",
+        "description": "Configurez une pièce pour le chauffage intelligent. Pièces ajoutées : {num_rooms}",
         "data": {
           "name": "Nom de la pièce",
-          "id": "Identifiant de la pièce",
+          "id": "Identifiant de la pièce (optionnel)",
           "type": "Type de pièce",
           "radiateur": "Radiateur (entité climate)",
           "sonde": "Sonde de température (optionnel)",
           "temp_confort": "Température confort",
           "temp_eco": "Température éco",
-          "temp_hors_gel": "Température hors-gel"
+          "temp_hors_gel": "Température hors-gel",
+          "skip_room": "Terminer la configuration"
         }
       }
     },
     "error": {
       "no_calendar": "Aucun calendrier trouvé",
       "no_trackers": "Aucun détecteur de présence trouvé",
+      "no_rooms": "Vous devez ajouter au moins une pièce",
       "invalid_entity": "Entité invalide sélectionnée"
     },
     "abort": {
@@ -39,13 +41,66 @@
   "options": {
     "step": {
       "init": {
-        "title": "Options",
+        "title": "Options Chauffage Intelligent",
         "data": {
-          "add_room": "Ajouter une pièce",
-          "modify_room": "Modifier une pièce",
-          "delete_room": "Supprimer une pièce"
+          "action": "Sélectionnez une action"
+        }
+      },
+      "add_room": {
+        "title": "Ajouter une pièce",
+        "data": {
+          "name": "Nom de la pièce",
+          "id": "Identifiant de la pièce (optionnel)",
+          "type": "Type de pièce",
+          "radiateur": "Radiateur (entité climate)",
+          "sonde": "Sonde de température (optionnel)",
+          "temp_confort": "Température confort",
+          "temp_eco": "Température éco",
+          "temp_hors_gel": "Température hors-gel"
+        }
+      },
+      "select_room": {
+        "title": "Sélectionner une pièce",
+        "data": {
+          "room": "Pièce à modifier"
+        }
+      },
+      "modify_room": {
+        "title": "Modifier la pièce : {room_name}",
+        "data": {
+          "name": "Nom de la pièce",
+          "type": "Type de pièce",
+          "radiateur": "Radiateur (entité climate)",
+          "sonde": "Sonde de température (optionnel)",
+          "temp_confort": "Température confort",
+          "temp_eco": "Température éco",
+          "temp_hors_gel": "Température hors-gel"
+        }
+      },
+      "delete_room": {
+        "title": "Supprimer une pièce",
+        "description": "Attention : Cette action est irréversible.",
+        "data": {
+          "room": "Pièce à supprimer",
+          "confirm": "Confirmer la suppression"
+        }
+      },
+      "settings": {
+        "title": "Paramètres globaux",
+        "data": {
+          "calendar": "Calendrier Google",
+          "presence_trackers": "Détecteurs de présence",
+          "update_interval": "Intervalle de mise à jour (minutes)",
+          "security_factor": "Facteur de sécurité préchauffage",
+          "min_preheat_time": "Temps minimum de préchauffage (minutes)"
         }
       }
+    },
+    "error": {
+      "room_exists": "Une pièce avec cet identifiant existe déjà"
+    },
+    "abort": {
+      "no_rooms": "Aucune pièce configurée"
     }
   }
 }
