@@ -1,0 +1,51 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurer Chauffage Intelligent",
+        "description": "Configurez l'intégration de chauffage intelligent",
+        "data": {
+          "calendar": "Calendrier Google",
+          "presence_trackers": "Détecteurs de présence",
+          "update_interval": "Intervalle de mise à jour (minutes)",
+          "security_factor": "Facteur de sécurité préchauffage",
+          "min_preheat_time": "Temps minimum de préchauffage (minutes)"
+        }
+      },
+      "add_room": {
+        "title": "Ajouter une pièce",
+        "description": "Configurez une pièce pour le chauffage intelligent",
+        "data": {
+          "name": "Nom de la pièce",
+          "id": "Identifiant de la pièce",
+          "type": "Type de pièce",
+          "radiateur": "Radiateur (entité climate)",
+          "sonde": "Sonde de température (optionnel)",
+          "temp_confort": "Température confort",
+          "temp_eco": "Température éco",
+          "temp_hors_gel": "Température hors-gel"
+        }
+      }
+    },
+    "error": {
+      "no_calendar": "Aucun calendrier trouvé",
+      "no_trackers": "Aucun détecteur de présence trouvé",
+      "invalid_entity": "Entité invalide sélectionnée"
+    },
+    "abort": {
+      "already_configured": "Déjà configuré"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "data": {
+          "add_room": "Ajouter une pièce",
+          "modify_room": "Modifier une pièce",
+          "delete_room": "Supprimer une pièce"
+        }
+      }
+    }
+  }
+}

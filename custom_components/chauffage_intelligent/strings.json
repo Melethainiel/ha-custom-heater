@@ -1,0 +1,51 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Chauffage Intelligent",
+        "description": "Set up the intelligent heating integration",
+        "data": {
+          "calendar": "Google Calendar",
+          "presence_trackers": "Presence device trackers",
+          "update_interval": "Update interval (minutes)",
+          "security_factor": "Preheat security factor",
+          "min_preheat_time": "Minimum preheat time (minutes)"
+        }
+      },
+      "add_room": {
+        "title": "Add a room",
+        "description": "Configure a room for intelligent heating",
+        "data": {
+          "name": "Room name",
+          "id": "Room ID",
+          "type": "Room type",
+          "radiateur": "Radiator (climate entity)",
+          "sonde": "Temperature sensor (optional)",
+          "temp_confort": "Comfort temperature",
+          "temp_eco": "Eco temperature",
+          "temp_hors_gel": "Frost protection temperature"
+        }
+      }
+    },
+    "error": {
+      "no_calendar": "No calendar entity found",
+      "no_trackers": "No device trackers found",
+      "invalid_entity": "Invalid entity selected"
+    },
+    "abort": {
+      "already_configured": "Already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "data": {
+          "add_room": "Add a room",
+          "modify_room": "Modify a room",
+          "delete_room": "Delete a room"
+        }
+      }
+    }
+  }
+}
