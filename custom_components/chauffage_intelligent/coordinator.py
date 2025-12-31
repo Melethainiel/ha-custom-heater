@@ -455,13 +455,15 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
                 continue
 
             summary = event.get("summary", "").lower().strip()
+            # Normalize separators: support "confort - salon" and "confort salon"
+            summary = summary.replace(" - ", " ")
 
             if summary == EVENT_ABSENCE:
                 result["absence"] = True
             elif summary == EVENT_CONFORT:
                 result["confort_global"] = True
             elif summary.startswith(f"{EVENT_CONFORT} "):
-                piece_name = summary[8:].strip()
+                piece_name = summary[len(EVENT_CONFORT) + 1 :].strip()
                 result["confort_pieces"].add(piece_name)
 
         return result
@@ -650,6 +652,8 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
 
         for event in calendar_events:
             summary = event.get("summary", "").lower().strip()
+            # Normalize separators: support "confort - salon" and "confort salon"
+            summary = summary.replace(" - ", " ")
 
             # Check if this is a comfort event for this room or global
             is_relevant = (
