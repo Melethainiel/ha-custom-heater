@@ -98,10 +98,13 @@ def basic_config():
 @pytest.fixture
 def coordinator(mock_hass, basic_config):
     """Create a coordinator instance for testing."""
-    with patch.object(
-        ChauffageIntelligentCoordinator,
-        "_async_update_data",
-        new_callable=AsyncMock,
+    with (
+        patch.object(
+            ChauffageIntelligentCoordinator,
+            "_async_update_data",
+            new_callable=AsyncMock,
+        ),
+        patch("homeassistant.helpers.frame.report_usage"),
     ):
         coord = ChauffageIntelligentCoordinator(
             mock_hass,
