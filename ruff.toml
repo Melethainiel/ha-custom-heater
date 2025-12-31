@@ -1,0 +1,38 @@
+# Ruff configuration for Chauffage Intelligent
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "SIM",    # flake8-simplify
+]
+
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+    "B905",   # zip without explicit strict parameter
+    "SIM108", # use ternary operator instead of if-else
+]
+
+[lint.per-file-ignores]
+"tests/*" = [
+    "S101",   # use of assert
+    "B018",   # useless expression
+]
+
+[lint.isort]
+known-first-party = ["custom_components.chauffage_intelligent"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
