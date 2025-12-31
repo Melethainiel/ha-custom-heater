@@ -22,12 +22,37 @@ from .const import (
     CONF_PIECE_TEMPERATURES,
     CONF_PIECE_TYPE,
     DOMAIN,
+    MODE_AUTO,
     MODE_CONFORT,
     MODE_ECO,
     MODE_HORS_GEL,
     MODE_OFF,
+    SOURCE_OVERRIDE,
 )
 from .coordinator import ChauffageIntelligentCoordinator
+
+# Preset mode labels (French)
+PRESET_AUTO = "Automatique"
+PRESET_CONFORT = "Confort"
+PRESET_ECO = "Éco"
+PRESET_HORS_GEL = "Hors-gel"
+
+PRESET_MODES = [PRESET_AUTO, PRESET_CONFORT, PRESET_ECO, PRESET_HORS_GEL]
+
+# Mapping between preset labels and internal modes
+PRESET_TO_MODE = {
+    PRESET_AUTO: MODE_AUTO,
+    PRESET_CONFORT: MODE_CONFORT,
+    PRESET_ECO: MODE_ECO,
+    PRESET_HORS_GEL: MODE_HORS_GEL,
+}
+
+MODE_TO_PRESET = {
+    MODE_AUTO: PRESET_AUTO,
+    MODE_CONFORT: PRESET_CONFORT,
+    MODE_ECO: PRESET_ECO,
+    MODE_HORS_GEL: PRESET_HORS_GEL,
+}
 
 
 async def async_setup_entry(
@@ -54,7 +79,10 @@ class ChauffageIntelligentClimate(
     _attr_has_entity_name = True
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
-    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+    _attr_supported_features = (
+        ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
+    )
+    _attr_preset_modes = PRESET_MODES
 
     def __init__(
         self,
@@ -104,6 +132,20 @@ class ChauffageIntelligentClimate(
             if mode == MODE_OFF:
                 return HVACMode.OFF
         return HVACMode.HEAT
+
+    @property
+    def preset_mode(self) -> str | None:
+        """Return current preset mode."""
+        if self._piece_data is None:
+            return PRESET_AUTO
+
+        source = self._piece_data.get("source")
+        if source == SOURCE_OVERRIDE:
+            current_mode = self._piece_data.get("mode")
+            if current_mode and current_mode in MODE_TO_PRESET:
+                return MODE_TO_PRESET[current_mode]
+
+        return PRESET_AUTO
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -164,3 +206,12 @@ class ChauffageIntelligentClimate(
         else:
             # Clear override to return to calculated mode
             await self.coordinator.async_reset_mode_override(self._piece_id)
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Set preset mode."""
+        mode = PRESET_TO_MODE.get(preset_mode)
+
+        if mode == MODE_AUTO:
+            await self.coordinator.async_reset_mode_override(self._piece_id)
+        elif mode:
+            await self.coordinator.async_set_mode_override(self._piece_id, mode)
