@@ -67,3 +67,4 @@ venv.bak/
 
 # Home Assistant
 .storage/
+MagicMock/

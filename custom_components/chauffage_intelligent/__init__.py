@@ -1,4 +1,5 @@
 """Chauffage Intelligent integration for Home Assistant."""
+
 from __future__ import annotations
 
 import logging
@@ -27,7 +28,7 @@ from .coordinator import ChauffageIntelligentCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.CLIMATE, Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.CLIMATE, Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SELECT]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -38,18 +39,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_CALENDAR: entry.data[CONF_CALENDAR],
         CONF_PRESENCE_TRACKERS: entry.data[CONF_PRESENCE_TRACKERS],
         CONF_PIECES: entry.data.get(CONF_PIECES, {}),
-        CONF_SECURITY_FACTOR: entry.data.get(
-            CONF_SECURITY_FACTOR, DEFAULT_SECURITY_FACTOR
-        ),
-        CONF_MIN_PREHEAT_TIME: entry.data.get(
-            CONF_MIN_PREHEAT_TIME, DEFAULT_MIN_PREHEAT_TIME
-        ),
-        CONF_UPDATE_INTERVAL: entry.data.get(
-            CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
-        ),
-        CONF_DERIVATIVE_WINDOW: entry.data.get(
-            CONF_DERIVATIVE_WINDOW, DEFAULT_DERIVATIVE_WINDOW
-        ),
+        CONF_SECURITY_FACTOR: entry.data.get(CONF_SECURITY_FACTOR, DEFAULT_SECURITY_FACTOR),
+        CONF_MIN_PREHEAT_TIME: entry.data.get(CONF_MIN_PREHEAT_TIME, DEFAULT_MIN_PREHEAT_TIME),
+        CONF_UPDATE_INTERVAL: entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+        CONF_DERIVATIVE_WINDOW: entry.data.get(CONF_DERIVATIVE_WINDOW, DEFAULT_DERIVATIVE_WINDOW),
     }
 
     coordinator = ChauffageIntelligentCoordinator(

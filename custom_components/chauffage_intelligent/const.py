@@ -7,8 +7,20 @@ MODE_CONFORT = "confort"
 MODE_ECO = "eco"
 MODE_HORS_GEL = "hors_gel"
 MODE_OFF = "off"
+MODE_AUTO = "auto"
 
 MODES = [MODE_CONFORT, MODE_ECO, MODE_HORS_GEL, MODE_OFF]
+
+# Select entity options (for mode override selector)
+SELECT_OPTIONS = [MODE_AUTO, MODE_CONFORT, MODE_ECO, MODE_HORS_GEL]
+
+# Labels for select entity (French)
+SELECT_OPTION_LABELS = {
+    MODE_AUTO: "Automatique",
+    MODE_CONFORT: "Confort",
+    MODE_ECO: "Éco",
+    MODE_HORS_GEL: "Hors-gel",
+}
 
 # Room types
 ROOM_TYPES = [
