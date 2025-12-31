@@ -1,4 +1,5 @@
 """Tests for climate entities."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -9,8 +10,9 @@ from homeassistant.const import ATTR_TEMPERATURE
 
 from custom_components.chauffage_intelligent.climate import ChauffageIntelligentClimate
 from custom_components.chauffage_intelligent.const import (
+    CONF_PIECE_AREA_ID,
     CONF_PIECE_NAME,
-    CONF_PIECE_RADIATEUR,
+    CONF_PIECE_RADIATEURS,
     CONF_PIECE_SONDE,
     CONF_PIECE_TEMPERATURES,
     CONF_PIECE_TYPE,
@@ -27,8 +29,9 @@ def piece_config():
     """Create a piece configuration for testing."""
     return {
         CONF_PIECE_NAME: "Bureau",
+        CONF_PIECE_AREA_ID: "bureau",
         CONF_PIECE_TYPE: "bureau",
-        CONF_PIECE_RADIATEUR: "climate.bilbao_bureau",
+        CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
         CONF_PIECE_SONDE: "sensor.temperature_bureau",
         CONF_PIECE_TEMPERATURES: {
             MODE_CONFORT: 19,
@@ -68,11 +71,7 @@ class TestChauffageIntelligentClimate:
 
     def test_piece_data_returns_data(self, coordinator, piece_config):
         """Test _piece_data returns room data."""
-        coordinator.data = {
-            "pieces": {
-                "bureau": {"mode": "confort", "temperature": 18.5}
-            }
-        }
+        coordinator.data = {"pieces": {"bureau": {"mode": "confort", "temperature": 18.5}}}
         climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
         assert climate._piece_data == {"mode": "confort", "temperature": 18.5}
@@ -93,11 +92,7 @@ class TestChauffageIntelligentClimate:
 
     def test_current_temperature(self, coordinator, piece_config):
         """Test current_temperature property."""
-        coordinator.data = {
-            "pieces": {
-                "bureau": {"temperature": 18.5}
-            }
-        }
+        coordinator.data = {"pieces": {"bureau": {"temperature": 18.5}}}
         climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
         assert climate.current_temperature == 18.5
@@ -111,11 +106,7 @@ class TestChauffageIntelligentClimate:
 
     def test_target_temperature(self, coordinator, piece_config):
         """Test target_temperature property."""
-        coordinator.data = {
-            "pieces": {
-                "bureau": {"consigne": 19.0}
-            }
-        }
+        coordinator.data = {"pieces": {"bureau": {"consigne": 19.0}}}
         climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
         assert climate.target_temperature == 19.0
@@ -129,22 +120,14 @@ class TestChauffageIntelligentClimate:
 
     def test_hvac_mode_returns_heat(self, coordinator, piece_config):
         """Test hvac_mode returns HEAT when not off."""
-        coordinator.data = {
-            "pieces": {
-                "bureau": {"mode": "confort"}
-            }
-        }
+        coordinator.data = {"pieces": {"bureau": {"mode": "confort"}}}
         climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
         assert climate.hvac_mode == HVACMode.HEAT
 
     def test_hvac_mode_returns_off(self, coordinator, piece_config):
         """Test hvac_mode returns OFF when mode is off."""
-        coordinator.data = {
-            "pieces": {
-                "bureau": {"mode": MODE_OFF}
-            }
-        }
+        coordinator.data = {"pieces": {"bureau": {"mode": MODE_OFF}}}
         climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
         assert climate.hvac_mode == HVACMode.OFF
@@ -162,7 +145,7 @@ class TestChauffageIntelligentClimate:
         climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
         attrs = climate.extra_state_attributes
-        assert attrs["radiateur_entity"] == "climate.bilbao_bureau"
+        assert attrs["radiateur_entities"] == ["climate.bilbao_bureau"]
         assert attrs["sonde_entity"] == "sensor.temperature_bureau"
         assert attrs["type_piece"] == "bureau"
 

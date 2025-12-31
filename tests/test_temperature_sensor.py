@@ -1,8 +1,9 @@
 """Tests for temperature sensor fallback logic."""
+
 from __future__ import annotations
 
 from custom_components.chauffage_intelligent.const import (
-    CONF_PIECE_RADIATEUR,
+    CONF_PIECE_RADIATEURS,
     CONF_PIECE_SONDE,
 )
 
@@ -20,7 +21,7 @@ class TestTemperatureSensorFallback:
         coordinator.hass = mock_hass
         piece_config = {
             CONF_PIECE_SONDE: "sensor.temperature_bureau",
-            CONF_PIECE_RADIATEUR: "climate.bilbao_bureau",
+            CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
         }
 
         result = coordinator._get_temperature(piece_config)
@@ -37,16 +38,14 @@ class TestTemperatureSensorFallback:
         coordinator.hass = mock_hass
         piece_config = {
             CONF_PIECE_SONDE: "sensor.temperature_bureau",
-            CONF_PIECE_RADIATEUR: "climate.bilbao_bureau",
+            CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
         }
 
         result = coordinator._get_temperature(piece_config)
 
         assert result == 18.0
 
-    def test_external_sensor_unknown_uses_fallback(
-        self, coordinator, mock_hass, mock_state
-    ):
+    def test_external_sensor_unknown_uses_fallback(self, coordinator, mock_hass, mock_state):
         """Test that 'unknown' state triggers fallback."""
         mock_hass.states.get.side_effect = lambda entity_id: {
             "sensor.temperature_bureau": mock_state("unknown"),
@@ -56,7 +55,7 @@ class TestTemperatureSensorFallback:
         coordinator.hass = mock_hass
         piece_config = {
             CONF_PIECE_SONDE: "sensor.temperature_bureau",
-            CONF_PIECE_RADIATEUR: "climate.bilbao_bureau",
+            CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
         }
 
         result = coordinator._get_temperature(piece_config)
@@ -72,7 +71,7 @@ class TestTemperatureSensorFallback:
         coordinator.hass = mock_hass
         piece_config = {
             CONF_PIECE_SONDE: None,
-            CONF_PIECE_RADIATEUR: "climate.bilbao_bureau",
+            CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
         }
 
         result = coordinator._get_temperature(piece_config)
@@ -89,16 +88,14 @@ class TestTemperatureSensorFallback:
         coordinator.hass = mock_hass
         piece_config = {
             CONF_PIECE_SONDE: "sensor.temperature_bureau",
-            CONF_PIECE_RADIATEUR: "climate.bilbao_bureau",
+            CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
         }
 
         result = coordinator._get_temperature(piece_config)
 
         assert result is None
 
-    def test_radiator_has_no_current_temperature(
-        self, coordinator, mock_hass, mock_state
-    ):
+    def test_radiator_has_no_current_temperature(self, coordinator, mock_hass, mock_state):
         """Test when radiator doesn't expose current temperature."""
         mock_hass.states.get.side_effect = lambda entity_id: {
             "sensor.temperature_bureau": mock_state("unavailable"),
@@ -108,7 +105,7 @@ class TestTemperatureSensorFallback:
         coordinator.hass = mock_hass
         piece_config = {
             CONF_PIECE_SONDE: "sensor.temperature_bureau",
-            CONF_PIECE_RADIATEUR: "climate.bilbao_bureau",
+            CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
         }
 
         result = coordinator._get_temperature(piece_config)
@@ -125,7 +122,7 @@ class TestTemperatureSensorFallback:
         coordinator.hass = mock_hass
         piece_config = {
             CONF_PIECE_SONDE: "sensor.temperature_bureau",
-            CONF_PIECE_RADIATEUR: "climate.bilbao_bureau",
+            CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
         }
 
         result = coordinator._get_temperature(piece_config)
@@ -140,7 +137,7 @@ class TestTemperatureSensorFallback:
         coordinator.hass = mock_hass
         piece_config = {
             CONF_PIECE_SONDE: "sensor.nonexistent",
-            CONF_PIECE_RADIATEUR: "climate.nonexistent",
+            CONF_PIECE_RADIATEURS: ["climate.nonexistent"],
         }
 
         result = coordinator._get_temperature(piece_config)

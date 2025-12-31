@@ -1,4 +1,5 @@
 """DataUpdateCoordinator for Chauffage Intelligent."""
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,7 @@ from .const import (
     CONF_DERIVATIVE_WINDOW,
     CONF_MIN_PREHEAT_TIME,
     CONF_PIECE_NAME,
-    CONF_PIECE_RADIATEUR,
+    CONF_PIECE_RADIATEURS,
     CONF_PIECE_SONDE,
     CONF_PIECE_TEMPERATURES,
     CONF_PIECES,
@@ -177,6 +178,7 @@ class HeatingRateLearner:
 
     def _same_time_period(self, hour1: int, hour2: int) -> bool:
         """Check if two hours are in the same time period."""
+
         # Define periods: night (22-6), morning (6-12), afternoon (12-18), evening (18-22)
         def get_period(h: int) -> int:
             if 6 <= h < 12:
@@ -268,9 +270,7 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
                 vitesse_mesuree = self._compute_derivative(piece_id, temp_actuelle)
 
                 # Get learned rate for better predictions
-                vitesse_apprise = self._learner.get_predicted_rate(
-                    piece_id, outdoor_temp
-                )
+                vitesse_apprise = self._learner.get_predicted_rate(piece_id, outdoor_temp)
 
                 # Use learned rate if available and measured is None
                 vitesse = vitesse_mesuree
@@ -278,9 +278,7 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
                     vitesse = vitesse_apprise
 
                 # Resolve mode
-                mode, source = self._resolve_mode(
-                    piece_id, parsed_events, maison_occupee
-                )
+                mode, source = self._resolve_mode(piece_id, parsed_events, maison_occupee)
 
                 # Get target temperature
                 consigne = piece_config[CONF_PIECE_TEMPERATURES].get(mode, 19)
@@ -312,20 +310,18 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
                 # If preheating triggered and currently in eco, switch to comfort
                 if prechauffage_actif and mode == MODE_ECO:
                     mode = MODE_CONFORT
-                    consigne = piece_config[CONF_PIECE_TEMPERATURES].get(
-                        MODE_CONFORT, 19
-                    )
+                    consigne = piece_config[CONF_PIECE_TEMPERATURES].get(MODE_CONFORT, 19)
                     source = SOURCE_ANTICIPATION
 
                 # Learn from heating periods
-                self._learn_heating_rate(
-                    piece_id, mode, vitesse_mesuree, outdoor_temp
-                )
+                self._learn_heating_rate(piece_id, mode, vitesse_mesuree, outdoor_temp)
 
-                # Apply temperature to radiator
-                await self._set_radiator_temperature(
-                    piece_config[CONF_PIECE_RADIATEUR], consigne
-                )
+                # Apply temperature to radiators (supports multiple)
+                radiateurs = piece_config.get(CONF_PIECE_RADIATEURS, [])
+                # Handle legacy single radiator config
+                if isinstance(radiateurs, str):
+                    radiateurs = [radiateurs]
+                await self._set_radiators_temperature(radiateurs, consigne)
 
                 # Get learning stats
                 learning_stats = self._learner.get_stats(piece_id)
@@ -490,9 +486,13 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
                 except ValueError:
                     pass
 
-        # Fallback to radiator's internal sensor
-        radiateur_entity = piece_config.get(CONF_PIECE_RADIATEUR)
-        if radiateur_entity:
+        # Fallback to first radiator's internal sensor
+        radiateurs = piece_config.get(CONF_PIECE_RADIATEURS, [])
+        # Handle legacy single radiator config
+        if isinstance(radiateurs, str):
+            radiateurs = [radiateurs]
+
+        for radiateur_entity in radiateurs:
             state = self.hass.states.get(radiateur_entity)
             if state:
                 current_temp = state.attributes.get("current_temperature")
@@ -504,9 +504,7 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
 
         return None
 
-    def _compute_derivative(
-        self, piece_id: str, current_temp: float | None
-    ) -> float | None:
+    def _compute_derivative(self, piece_id: str, current_temp: float | None) -> float | None:
         """Compute heating rate in °C/h based on temperature history."""
         if current_temp is None:
             return None
@@ -523,9 +521,7 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
         # Clean old entries (keep only last derivative_window minutes)
         cutoff = now - timedelta(minutes=self.derivative_window)
         self._temp_history[piece_id] = [
-            (t, temp)
-            for t, temp in self._temp_history[piece_id]
-            if t >= cutoff
+            (t, temp) for t, temp in self._temp_history[piece_id] if t >= cutoff
         ]
 
         # Need at least 2 points to compute derivative
@@ -678,24 +674,23 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
 
         return next_event
 
-    async def _set_radiator_temperature(
-        self, radiator_entity: str, temperature: float
+    async def _set_radiators_temperature(
+        self, radiator_entities: list[str], temperature: float
     ) -> None:
-        """Set the target temperature on a radiator."""
-        try:
-            await self.hass.services.async_call(
-                "climate",
-                "set_temperature",
-                {
-                    "entity_id": radiator_entity,
-                    "temperature": temperature,
-                },
-                blocking=True,
-            )
-        except Exception as err:
-            _LOGGER.error(
-                "Failed to set temperature on %s: %s", radiator_entity, err
-            )
+        """Set the target temperature on multiple radiators."""
+        for radiator_entity in radiator_entities:
+            try:
+                await self.hass.services.async_call(
+                    "climate",
+                    "set_temperature",
+                    {
+                        "entity_id": radiator_entity,
+                        "temperature": temperature,
+                    },
+                    blocking=True,
+                )
+            except Exception as err:
+                _LOGGER.error("Failed to set temperature on %s: %s", radiator_entity, err)
 
     async def async_set_mode_override(
         self, piece_id: str, mode: str, duration: int | None = None
