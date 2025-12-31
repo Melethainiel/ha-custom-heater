@@ -12,19 +12,30 @@
           "min_preheat_time": "Minimum preheat time (minutes)"
         }
       },
-      "add_room": {
-        "title": "Add a room",
-        "description": "Configure a room for intelligent heating. Rooms added: {num_rooms}",
+      "room_menu": {
+        "title": "Room configuration",
+        "description": "Rooms configured: {num_rooms}",
         "data": {
-          "name": "Room name",
-          "id": "Room ID (optional)",
+          "action": "Select an action"
+        }
+      },
+      "select_area": {
+        "title": "Select a room",
+        "description": "Choose a room to configure for intelligent heating",
+        "data": {
+          "area": "Room"
+        }
+      },
+      "configure_room": {
+        "title": "Configure room: {area_name}",
+        "description": "Configure heating settings for this room",
+        "data": {
           "type": "Room type",
-          "radiateur": "Radiator (climate entity)",
+          "radiateurs": "Radiators (climate entities)",
           "sonde": "Temperature sensor (optional)",
           "temp_confort": "Comfort temperature",
           "temp_eco": "Eco temperature",
-          "temp_hors_gel": "Frost protection temperature",
-          "skip_room": "Finish configuration (skip adding more rooms)"
+          "temp_hors_gel": "Frost protection temperature"
         }
       }
     },
@@ -32,6 +43,8 @@
       "no_calendar": "No calendar entity found",
       "no_trackers": "No device trackers found",
       "no_rooms": "You must add at least one room",
+      "no_areas_available": "No rooms with climate entities available",
+      "area_already_configured": "This room is already configured",
       "invalid_entity": "Invalid entity selected"
     },
     "abort": {
@@ -46,13 +59,18 @@
           "action": "Select an action"
         }
       },
-      "add_room": {
-        "title": "Add a room",
+      "select_area": {
+        "title": "Select a room",
+        "description": "Choose a room to add",
         "data": {
-          "name": "Room name",
-          "id": "Room ID (optional)",
+          "area": "Room"
+        }
+      },
+      "add_room": {
+        "title": "Configure room: {area_name}",
+        "data": {
           "type": "Room type",
-          "radiateur": "Radiator (climate entity)",
+          "radiateurs": "Radiators (climate entities)",
           "sonde": "Temperature sensor (optional)",
           "temp_confort": "Comfort temperature",
           "temp_eco": "Eco temperature",
@@ -68,9 +86,8 @@
       "modify_room": {
         "title": "Modify room: {room_name}",
         "data": {
-          "name": "Room name",
           "type": "Room type",
-          "radiateur": "Radiator (climate entity)",
+          "radiateurs": "Radiators (climate entities)",
           "sonde": "Temperature sensor (optional)",
           "temp_confort": "Comfort temperature",
           "temp_eco": "Eco temperature",
@@ -97,10 +114,13 @@
       }
     },
     "error": {
-      "room_exists": "A room with this ID already exists"
+      "room_exists": "A room with this ID already exists",
+      "area_already_configured": "This room is already configured",
+      "no_areas_available": "No rooms with climate entities available"
     },
     "abort": {
-      "no_rooms": "No rooms configured"
+      "no_rooms": "No rooms configured",
+      "no_areas_available": "No rooms with climate entities available"
     }
   }
 }

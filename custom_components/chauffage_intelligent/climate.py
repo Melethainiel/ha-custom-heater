@@ -1,4 +1,5 @@
 """Climate platform for Chauffage Intelligent."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -16,7 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     CONF_PIECE_NAME,
-    CONF_PIECE_RADIATEUR,
+    CONF_PIECE_RADIATEURS,
     CONF_PIECE_SONDE,
     CONF_PIECE_TEMPERATURES,
     CONF_PIECE_TYPE,
@@ -35,9 +36,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up climate entities from a config entry."""
-    coordinator: ChauffageIntelligentCoordinator = hass.data[DOMAIN][
-        config_entry.entry_id
-    ]
+    coordinator: ChauffageIntelligentCoordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     entities = [
         ChauffageIntelligentClimate(coordinator, piece_id, piece_config)
@@ -109,8 +108,13 @@ class ChauffageIntelligentClimate(
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
+        # Handle both new list format and legacy single radiator format
+        radiateurs = self._piece_config.get(CONF_PIECE_RADIATEURS, [])
+        if isinstance(radiateurs, str):
+            radiateurs = [radiateurs]
+
         attrs = {
-            "radiateur_entity": self._piece_config.get(CONF_PIECE_RADIATEUR),
+            "radiateur_entities": radiateurs,
             "sonde_entity": self._piece_config.get(CONF_PIECE_SONDE),
             "type_piece": self._piece_config.get(CONF_PIECE_TYPE),
         }

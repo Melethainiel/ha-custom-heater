@@ -1,4 +1,5 @@
 """Pytest fixtures for Chauffage Intelligent tests."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -11,8 +12,9 @@ from custom_components.chauffage_intelligent.const import (
     CONF_CALENDAR,
     CONF_DERIVATIVE_WINDOW,
     CONF_MIN_PREHEAT_TIME,
+    CONF_PIECE_AREA_ID,
     CONF_PIECE_NAME,
-    CONF_PIECE_RADIATEUR,
+    CONF_PIECE_RADIATEURS,
     CONF_PIECE_SONDE,
     CONF_PIECE_TEMPERATURES,
     CONF_PIECE_TYPE,
@@ -52,8 +54,9 @@ def basic_config():
         CONF_PIECES: {
             "bureau": {
                 CONF_PIECE_NAME: "Bureau",
+                CONF_PIECE_AREA_ID: "bureau",
                 CONF_PIECE_TYPE: "bureau",
-                CONF_PIECE_RADIATEUR: "climate.bilbao_bureau",
+                CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
                 CONF_PIECE_SONDE: "sensor.temperature_bureau",
                 CONF_PIECE_TEMPERATURES: {
                     MODE_CONFORT: 19,
@@ -63,8 +66,9 @@ def basic_config():
             },
             "salon": {
                 CONF_PIECE_NAME: "Salon",
+                CONF_PIECE_AREA_ID: "salon",
                 CONF_PIECE_TYPE: "salon",
-                CONF_PIECE_RADIATEUR: "climate.bilbao_salon",
+                CONF_PIECE_RADIATEURS: ["climate.bilbao_salon"],
                 CONF_PIECE_SONDE: "sensor.temperature_salon",
                 CONF_PIECE_TEMPERATURES: {
                     MODE_CONFORT: 20,
@@ -74,8 +78,9 @@ def basic_config():
             },
             "chambre": {
                 CONF_PIECE_NAME: "Chambre",
+                CONF_PIECE_AREA_ID: "chambre",
                 CONF_PIECE_TYPE: "chambre",
-                CONF_PIECE_RADIATEUR: "climate.bilbao_chambre",
+                CONF_PIECE_RADIATEURS: ["climate.bilbao_chambre"],
                 CONF_PIECE_SONDE: "sensor.temperature_chambre",
                 CONF_PIECE_TEMPERATURES: {
                     MODE_CONFORT: 18,
@@ -109,17 +114,20 @@ def coordinator(mock_hass, basic_config):
 @pytest.fixture
 def mock_state():
     """Create a factory for mock states."""
+
     def _create_state(state: str, attributes: dict[str, Any] | None = None):
         mock = MagicMock()
         mock.state = state
         mock.attributes = attributes or {}
         return mock
+
     return _create_state
 
 
 @pytest.fixture
 def calendar_event_factory():
     """Create a factory for calendar events."""
+
     def _create_event(
         summary: str,
         start: datetime | None = None,
@@ -136,4 +144,5 @@ def calendar_event_factory():
             "start": start.isoformat(),
             "end": end.isoformat(),
         }
+
     return _create_event

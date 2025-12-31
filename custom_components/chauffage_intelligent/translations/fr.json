@@ -12,19 +12,30 @@
           "min_preheat_time": "Temps minimum de préchauffage (minutes)"
         }
       },
-      "add_room": {
-        "title": "Ajouter une pièce",
-        "description": "Configurez une pièce pour le chauffage intelligent. Pièces ajoutées : {num_rooms}",
+      "room_menu": {
+        "title": "Configuration des pièces",
+        "description": "Pièces configurées : {num_rooms}",
         "data": {
-          "name": "Nom de la pièce",
-          "id": "Identifiant de la pièce (optionnel)",
+          "action": "Sélectionnez une action"
+        }
+      },
+      "select_area": {
+        "title": "Sélectionner une pièce",
+        "description": "Choisissez une pièce à configurer pour le chauffage intelligent",
+        "data": {
+          "area": "Pièce"
+        }
+      },
+      "configure_room": {
+        "title": "Configurer la pièce : {area_name}",
+        "description": "Configurez les paramètres de chauffage pour cette pièce",
+        "data": {
           "type": "Type de pièce",
-          "radiateur": "Radiateur (entité climate)",
+          "radiateurs": "Radiateurs (entités climate)",
           "sonde": "Sonde de température (optionnel)",
           "temp_confort": "Température confort",
           "temp_eco": "Température éco",
-          "temp_hors_gel": "Température hors-gel",
-          "skip_room": "Terminer la configuration"
+          "temp_hors_gel": "Température hors-gel"
         }
       }
     },
@@ -32,6 +43,8 @@
       "no_calendar": "Aucun calendrier trouvé",
       "no_trackers": "Aucun détecteur de présence trouvé",
       "no_rooms": "Vous devez ajouter au moins une pièce",
+      "no_areas_available": "Aucune pièce avec des entités climate disponible",
+      "area_already_configured": "Cette pièce est déjà configurée",
       "invalid_entity": "Entité invalide sélectionnée"
     },
     "abort": {
@@ -46,13 +59,18 @@
           "action": "Sélectionnez une action"
         }
       },
-      "add_room": {
-        "title": "Ajouter une pièce",
+      "select_area": {
+        "title": "Sélectionner une pièce",
+        "description": "Choisissez une pièce à ajouter",
         "data": {
-          "name": "Nom de la pièce",
-          "id": "Identifiant de la pièce (optionnel)",
+          "area": "Pièce"
+        }
+      },
+      "add_room": {
+        "title": "Configurer la pièce : {area_name}",
+        "data": {
           "type": "Type de pièce",
-          "radiateur": "Radiateur (entité climate)",
+          "radiateurs": "Radiateurs (entités climate)",
           "sonde": "Sonde de température (optionnel)",
           "temp_confort": "Température confort",
           "temp_eco": "Température éco",
@@ -68,9 +86,8 @@
       "modify_room": {
         "title": "Modifier la pièce : {room_name}",
         "data": {
-          "name": "Nom de la pièce",
           "type": "Type de pièce",
-          "radiateur": "Radiateur (entité climate)",
+          "radiateurs": "Radiateurs (entités climate)",
           "sonde": "Sonde de température (optionnel)",
           "temp_confort": "Température confort",
           "temp_eco": "Température éco",
@@ -97,10 +114,13 @@
       }
     },
     "error": {
-      "room_exists": "Une pièce avec cet identifiant existe déjà"
+      "room_exists": "Une pièce avec cet identifiant existe déjà",
+      "area_already_configured": "Cette pièce est déjà configurée",
+      "no_areas_available": "Aucune pièce avec des entités climate disponible"
     },
     "abort": {
-      "no_rooms": "Aucune pièce configurée"
+      "no_rooms": "Aucune pièce configurée",
+      "no_areas_available": "Aucune pièce avec des entités climate disponible"
     }
   }
 }
