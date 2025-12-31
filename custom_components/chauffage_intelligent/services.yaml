@@ -1,0 +1,49 @@
+set_mode:
+  name: Set Mode
+  description: Force a mode for a room (temporary override)
+  fields:
+    piece:
+      name: Room
+      description: The room ID to set the mode for
+      required: true
+      example: "bureau"
+      selector:
+        text:
+    mode:
+      name: Mode
+      description: The mode to set
+      required: true
+      example: "confort"
+      selector:
+        select:
+          options:
+            - "confort"
+            - "eco"
+            - "hors_gel"
+            - "off"
+    duree:
+      name: Duration
+      description: Duration in minutes (optional, defaults to until next calendar change)
+      required: false
+      example: 120
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: minutes
+
+reset_mode:
+  name: Reset Mode
+  description: Cancel the override and return to calculated mode
+  fields:
+    piece:
+      name: Room
+      description: The room ID to reset (optional, resets all rooms if omitted)
+      required: false
+      example: "bureau"
+      selector:
+        text:
+
+refresh:
+  name: Refresh
+  description: Force an immediate recalculation of all modes
