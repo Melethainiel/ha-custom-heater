@@ -4,6 +4,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+
 jobs:
   release:
     name: Prepare release
@@ -43,11 +46,6 @@ jobs:
           zip -r ../chauffage_intelligent.zip chauffage_intelligent
 
       - name: Upload release asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./chauffage_intelligent.zip
-          asset_name: chauffage_intelligent.zip
-          asset_content_type: application/zip
+          files: chauffage_intelligent.zip
