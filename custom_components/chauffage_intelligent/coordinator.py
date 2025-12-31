@@ -12,30 +12,29 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    DOMAIN,
-    MODE_CONFORT,
-    MODE_ECO,
-    MODE_HORS_GEL,
-    MODE_OFF,
-    EVENT_ABSENCE,
-    EVENT_CONFORT,
-    SOURCE_CALENDAR,
-    SOURCE_PRESENCE,
-    SOURCE_DEFAULT,
-    SOURCE_OVERRIDE,
-    SOURCE_ANTICIPATION,
-    STATE_HOME,
     CONF_CALENDAR,
-    CONF_PRESENCE_TRACKERS,
-    CONF_PIECES,
-    CONF_SECURITY_FACTOR,
-    CONF_MIN_PREHEAT_TIME,
     CONF_DERIVATIVE_WINDOW,
-    DEFAULT_HEATING_RATE,
+    CONF_MIN_PREHEAT_TIME,
+    CONF_PIECE_NAME,
     CONF_PIECE_RADIATEUR,
     CONF_PIECE_SONDE,
     CONF_PIECE_TEMPERATURES,
-    CONF_PIECE_NAME,
+    CONF_PIECES,
+    CONF_PRESENCE_TRACKERS,
+    CONF_SECURITY_FACTOR,
+    DEFAULT_HEATING_RATE,
+    DOMAIN,
+    EVENT_ABSENCE,
+    EVENT_CONFORT,
+    MODE_CONFORT,
+    MODE_ECO,
+    MODE_HORS_GEL,
+    SOURCE_ANTICIPATION,
+    SOURCE_CALENDAR,
+    SOURCE_DEFAULT,
+    SOURCE_OVERRIDE,
+    SOURCE_PRESENCE,
+    STATE_HOME,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,7 +60,7 @@ class HeatingRateLearner:
         """Load learned data from storage."""
         try:
             if self.storage_path.exists():
-                with open(self.storage_path, "r") as f:
+                with open(self.storage_path) as f:
                     self._data = json.load(f)
                 _LOGGER.debug("Loaded heating rate data: %d rooms", len(self._data))
         except Exception as err:

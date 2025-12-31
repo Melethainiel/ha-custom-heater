@@ -1,20 +1,15 @@
 """Tests for heating rate learning."""
 from __future__ import annotations
 
-import json
-from datetime import datetime
-from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
 import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from custom_components.chauffage_intelligent.coordinator import (
-    HeatingRateLearner,
     LEARNING_MIN_SAMPLES,
-    LEARNING_RATE_MIN,
-    LEARNING_RATE_MAX,
+    HeatingRateLearner,
 )
 
 
@@ -88,7 +83,7 @@ class TestHeatingRateLearner:
     def test_prediction_with_enough_samples(self, learner):
         """Test prediction when enough samples are available."""
         # Add minimum samples
-        for i in range(LEARNING_MIN_SAMPLES):
+        for _ in range(LEARNING_MIN_SAMPLES):
             learner.record_observation("bureau", 1.5, hour=10)
 
         prediction = learner.get_predicted_rate("bureau")

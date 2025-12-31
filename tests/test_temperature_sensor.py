@@ -1,10 +1,6 @@
 """Tests for temperature sensor fallback logic."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
-import pytest
-
 from custom_components.chauffage_intelligent.const import (
     CONF_PIECE_RADIATEUR,
     CONF_PIECE_SONDE,

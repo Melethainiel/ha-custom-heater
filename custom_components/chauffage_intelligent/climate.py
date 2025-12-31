@@ -10,21 +10,21 @@ from homeassistant.components.climate import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    CONF_PIECE_NAME,
+    CONF_PIECE_RADIATEUR,
+    CONF_PIECE_SONDE,
+    CONF_PIECE_TEMPERATURES,
+    CONF_PIECE_TYPE,
     DOMAIN,
     MODE_CONFORT,
     MODE_ECO,
     MODE_HORS_GEL,
     MODE_OFF,
-    CONF_PIECE_NAME,
-    CONF_PIECE_RADIATEUR,
-    CONF_PIECE_SONDE,
-    CONF_PIECE_TYPE,
-    CONF_PIECE_TEMPERATURES,
 )
 from .coordinator import ChauffageIntelligentCoordinator
 

@@ -57,9 +57,8 @@ class TestDerivativeCalculation:
         """Test that readings older than window are removed."""
         coordinator._temp_history = {}
         now = datetime.now()
-        window = coordinator.derivative_window  # Default 30 minutes
 
-        # Add old reading (45 minutes ago, outside window)
+        # Add old reading (45 minutes ago, outside default 30-minute window)
         coordinator._temp_history["bureau"] = [
             (now - timedelta(minutes=45), 15.0)
         ]

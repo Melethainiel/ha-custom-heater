@@ -2,18 +2,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
-
-import pytest
 
 from custom_components.chauffage_intelligent.const import (
     MODE_CONFORT,
     MODE_ECO,
     MODE_HORS_GEL,
     SOURCE_CALENDAR,
-    SOURCE_PRESENCE,
     SOURCE_DEFAULT,
     SOURCE_OVERRIDE,
+    SOURCE_PRESENCE,
 )
 
 
@@ -97,8 +94,6 @@ class TestModeResolution:
 
     def test_override_takes_priority(self, coordinator):
         """Test that manual override takes priority over everything."""
-        from datetime import datetime, timedelta
-        from homeassistant.util import dt as dt_util
 
         # Set an override that doesn't expire
         coordinator._mode_overrides["bureau"] = (MODE_CONFORT, None)
@@ -117,8 +112,8 @@ class TestModeResolution:
 
     def test_expired_override_is_ignored(self, coordinator):
         """Test that expired override is removed and ignored."""
-        from datetime import datetime, timedelta
         from unittest.mock import patch
+
         from homeassistant.util import dt as dt_util
 
         # Set an override that expired
