@@ -10,6 +10,7 @@ Custom component Home Assistant pour gérer intelligemment des radiateurs Zigbee
 - **Planification via Google Calendar** : Contrôlez votre chauffage depuis votre calendrier
 - **Détection de présence** : Passage automatique en mode Eco quand personne n'est à la maison
 - **Anticipation du préchauffage** : Calcul automatique du temps nécessaire pour atteindre la température cible
+- **Apprentissage automatique** : Le système apprend les vitesses de chauffe de chaque pièce pour améliorer les prédictions
 
 ## Installation
 
@@ -141,6 +142,24 @@ Le système calcule automatiquement le temps nécessaire pour atteindre la temp�
 - Un facteur de sécurité configurable (défaut: 1.3)
 
 Si un événement "Confort" est prévu dans le calendrier, le préchauffage démarre automatiquement pour que la température cible soit atteinte à l'heure de l'événement.
+
+## Apprentissage automatique
+
+Le système apprend automatiquement les caractéristiques thermiques de chaque pièce :
+
+- **Collecte** : Pendant les phases de chauffage, le système enregistre la vitesse de chauffe avec les conditions (heure, température extérieure)
+- **Prédiction** : Les estimations sont pondérées selon la similarité avec les conditions actuelles
+- **Persistance** : Les données sont sauvegardées dans `.storage/chauffage_intelligent_learned_rates.json`
+
+### Attributs exposés
+
+| Attribut | Description |
+|----------|-------------|
+| `vitesse_apprise` | Vitesse de chauffe prédite (°C/h) |
+| `learning_samples` | Nombre d'observations enregistrées |
+| `learning_avg_rate` | Vitesse moyenne apprise |
+
+L'apprentissage nécessite au minimum 5 observations avant d'utiliser les prédictions.
 
 ## Développement
 

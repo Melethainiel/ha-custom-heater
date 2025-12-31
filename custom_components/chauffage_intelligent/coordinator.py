@@ -1,8 +1,10 @@
 """DataUpdateCoordinator for Chauffage Intelligent."""
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -33,9 +35,178 @@ from .const import (
     CONF_PIECE_RADIATEUR,
     CONF_PIECE_SONDE,
     CONF_PIECE_TEMPERATURES,
+    CONF_PIECE_NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Learning constants
+LEARNING_MIN_SAMPLES = 5  # Minimum samples before using learned rate
+LEARNING_MAX_SAMPLES = 100  # Maximum samples to keep per condition
+LEARNING_RATE_MIN = 0.3  # Minimum valid heating rate °C/h
+LEARNING_RATE_MAX = 5.0  # Maximum valid heating rate °C/h
+
+
+class HeatingRateLearner:
+    """Learn and predict heating rates based on historical data."""
+
+    def __init__(self, hass: HomeAssistant, storage_path: Path) -> None:
+        """Initialize the learner."""
+        self.hass = hass
+        self.storage_path = storage_path
+        self._data: dict[str, list[dict[str, Any]]] = {}
+        self._load_data()
+
+    def _load_data(self) -> None:
+        """Load learned data from storage."""
+        try:
+            if self.storage_path.exists():
+                with open(self.storage_path, "r") as f:
+                    self._data = json.load(f)
+                _LOGGER.debug("Loaded heating rate data: %d rooms", len(self._data))
+        except Exception as err:
+            _LOGGER.warning("Failed to load heating rate data: %s", err)
+            self._data = {}
+
+    def _save_data(self) -> None:
+        """Save learned data to storage."""
+        try:
+            self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.storage_path, "w") as f:
+                json.dump(self._data, f)
+        except Exception as err:
+            _LOGGER.warning("Failed to save heating rate data: %s", err)
+
+    def record_observation(
+        self,
+        piece_id: str,
+        heating_rate: float,
+        outdoor_temp: float | None = None,
+        hour: int | None = None,
+    ) -> None:
+        """Record a heating rate observation."""
+        # Validate heating rate
+        if heating_rate is None or heating_rate <= LEARNING_RATE_MIN:
+            return  # Don't learn from cooling or very slow heating
+
+        if heating_rate > LEARNING_RATE_MAX:
+            return  # Ignore unrealistic values
+
+        if hour is None:
+            hour = dt_util.now().hour
+
+        observation = {
+            "rate": round(heating_rate, 3),
+            "outdoor_temp": outdoor_temp,
+            "hour": hour,
+            "timestamp": dt_util.now().isoformat(),
+        }
+
+        if piece_id not in self._data:
+            self._data[piece_id] = []
+
+        self._data[piece_id].append(observation)
+
+        # Keep only the last N samples
+        if len(self._data[piece_id]) > LEARNING_MAX_SAMPLES:
+            self._data[piece_id] = self._data[piece_id][-LEARNING_MAX_SAMPLES:]
+
+        self._save_data()
+        _LOGGER.debug(
+            "Recorded heating rate for %s: %.2f°C/h (outdoor: %s, hour: %d)",
+            piece_id,
+            heating_rate,
+            outdoor_temp,
+            hour,
+        )
+
+    def get_predicted_rate(
+        self,
+        piece_id: str,
+        outdoor_temp: float | None = None,
+        hour: int | None = None,
+    ) -> float | None:
+        """Get predicted heating rate based on learned data."""
+        if piece_id not in self._data:
+            return None
+
+        samples = self._data[piece_id]
+        if len(samples) < LEARNING_MIN_SAMPLES:
+            return None
+
+        if hour is None:
+            hour = dt_util.now().hour
+
+        # Weight samples by similarity to current conditions
+        weighted_sum = 0.0
+        weight_total = 0.0
+
+        for sample in samples:
+            weight = 1.0
+
+            # Time-of-day similarity (day vs night)
+            sample_hour = sample.get("hour", 12)
+            is_same_period = self._same_time_period(hour, sample_hour)
+            if is_same_period:
+                weight *= 1.5
+
+            # Outdoor temperature similarity
+            sample_outdoor = sample.get("outdoor_temp")
+            if outdoor_temp is not None and sample_outdoor is not None:
+                temp_diff = abs(outdoor_temp - sample_outdoor)
+                if temp_diff <= 5:
+                    weight *= 1.5
+                elif temp_diff <= 10:
+                    weight *= 1.0
+                else:
+                    weight *= 0.5
+
+            weighted_sum += sample["rate"] * weight
+            weight_total += weight
+
+        if weight_total > 0:
+            predicted = weighted_sum / weight_total
+            _LOGGER.debug(
+                "Predicted heating rate for %s: %.2f°C/h (from %d samples)",
+                piece_id,
+                predicted,
+                len(samples),
+            )
+            return predicted
+
+        return None
+
+    def _same_time_period(self, hour1: int, hour2: int) -> bool:
+        """Check if two hours are in the same time period."""
+        # Define periods: night (22-6), morning (6-12), afternoon (12-18), evening (18-22)
+        def get_period(h: int) -> int:
+            if 6 <= h < 12:
+                return 1
+            elif 12 <= h < 18:
+                return 2
+            elif 18 <= h < 22:
+                return 3
+            else:
+                return 0
+
+        return get_period(hour1) == get_period(hour2)
+
+    def get_stats(self, piece_id: str) -> dict[str, Any]:
+        """Get learning statistics for a room."""
+        if piece_id not in self._data:
+            return {"samples": 0, "avg_rate": None, "min_rate": None, "max_rate": None}
+
+        samples = self._data[piece_id]
+        if not samples:
+            return {"samples": 0, "avg_rate": None, "min_rate": None, "max_rate": None}
+
+        rates = [s["rate"] for s in samples]
+        return {
+            "samples": len(samples),
+            "avg_rate": round(sum(rates) / len(rates), 2),
+            "min_rate": round(min(rates), 2),
+            "max_rate": round(max(rates), 2),
+        }
 
 
 class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
@@ -68,6 +239,13 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
         # Manual mode overrides: {piece_id: (mode, expiry_datetime or None)}
         self._mode_overrides: dict[str, tuple[str, datetime | None]] = {}
 
+        # Heating rate learner
+        storage_path = Path(hass.config.path(".storage")) / f"{DOMAIN}_learned_rates.json"
+        self._learner = HeatingRateLearner(hass, storage_path)
+
+        # Track previous mode to detect heating periods
+        self._previous_modes: dict[str, str] = {}
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from sources and compute states."""
         try:
@@ -78,14 +256,27 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
             # 2. Compute presence
             maison_occupee = self._compute_presence()
 
-            # 3. Process each room
+            # 3. Get outdoor temperature if available
+            outdoor_temp = self._get_outdoor_temperature()
+
+            # 4. Process each room
             pieces_data = {}
             for piece_id, piece_config in self.pieces.items():
                 # Get current temperature
                 temp_actuelle = self._get_temperature(piece_config)
 
-                # Compute heating rate
-                vitesse = self._compute_derivative(piece_id, temp_actuelle)
+                # Compute heating rate (measured)
+                vitesse_mesuree = self._compute_derivative(piece_id, temp_actuelle)
+
+                # Get learned rate for better predictions
+                vitesse_apprise = self._learner.get_predicted_rate(
+                    piece_id, outdoor_temp
+                )
+
+                # Use learned rate if available and measured is None
+                vitesse = vitesse_mesuree
+                if vitesse is None and vitesse_apprise is not None:
+                    vitesse = vitesse_apprise
 
                 # Resolve mode
                 mode, source = self._resolve_mode(
@@ -95,10 +286,24 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
                 # Get target temperature
                 consigne = piece_config[CONF_PIECE_TEMPERATURES].get(mode, 19)
 
-                # Compute preheat time
+                # Compute preheat time using best available rate
+                vitesse_pour_calcul = vitesse
+                if vitesse_pour_calcul is None and vitesse_apprise is not None:
+                    vitesse_pour_calcul = vitesse_apprise
+
                 temps_prechauffe = self.compute_preheat_time(
-                    temp_actuelle, consigne, vitesse
+                    temp_actuelle, consigne, vitesse_pour_calcul
                 )
+
+                # Find next comfort event for this room
+                prochain_evenement = self._find_next_comfort_event(piece_id, calendar_events)
+                prochain_evenement_iso = None
+                if prochain_evenement:
+                    start = prochain_evenement.get("start")
+                    if isinstance(start, str):
+                        prochain_evenement_iso = start
+                    elif isinstance(start, datetime):
+                        prochain_evenement_iso = start.isoformat()
 
                 # Check if preheating should be triggered
                 prechauffage_actif = self._check_preheat_trigger(
@@ -113,10 +318,18 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
                     )
                     source = SOURCE_ANTICIPATION
 
+                # Learn from heating periods
+                self._learn_heating_rate(
+                    piece_id, mode, vitesse_mesuree, outdoor_temp
+                )
+
                 # Apply temperature to radiator
                 await self._set_radiator_temperature(
                     piece_config[CONF_PIECE_RADIATEUR], consigne
                 )
+
+                # Get learning stats
+                learning_stats = self._learner.get_stats(piece_id)
 
                 pieces_data[piece_id] = {
                     "mode": mode,
@@ -124,17 +337,79 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
                     "consigne": consigne,
                     "temperature": temp_actuelle,
                     "vitesse_chauffe": vitesse,
+                    "vitesse_apprise": vitesse_apprise,
                     "temps_prechauffage": temps_prechauffe,
                     "prechauffage_actif": prechauffage_actif,
+                    "prochain_evenement": prochain_evenement_iso,
+                    "learning_samples": learning_stats["samples"],
+                    "learning_avg_rate": learning_stats["avg_rate"],
                 }
+
+                # Update previous mode
+                self._previous_modes[piece_id] = mode
 
             return {
                 "maison_occupee": maison_occupee,
+                "outdoor_temp": outdoor_temp,
                 "pieces": pieces_data,
             }
 
         except Exception as err:
             raise UpdateFailed(f"Error updating data: {err}") from err
+
+    def _learn_heating_rate(
+        self,
+        piece_id: str,
+        current_mode: str,
+        heating_rate: float | None,
+        outdoor_temp: float | None,
+    ) -> None:
+        """Learn from heating periods."""
+        # Only learn when actively heating (comfort mode)
+        if current_mode != MODE_CONFORT:
+            return
+
+        # Only learn if we have a valid heating rate
+        if heating_rate is None or heating_rate <= 0:
+            return
+
+        # Record the observation
+        self._learner.record_observation(
+            piece_id,
+            heating_rate,
+            outdoor_temp,
+        )
+
+    def _get_outdoor_temperature(self) -> float | None:
+        """Get outdoor temperature from weather entity if available."""
+        # Try common weather entity patterns
+        weather_entities = [
+            "weather.home",
+            "weather.maison",
+            "sensor.outdoor_temperature",
+            "sensor.temperature_exterieure",
+        ]
+
+        for entity_id in weather_entities:
+            state = self.hass.states.get(entity_id)
+            if state:
+                # Weather entities have temperature in attributes
+                if entity_id.startswith("weather."):
+                    temp = state.attributes.get("temperature")
+                    if temp is not None:
+                        try:
+                            return float(temp)
+                        except ValueError:
+                            pass
+                # Sensor entities have temperature in state
+                else:
+                    if state.state not in ("unknown", "unavailable"):
+                        try:
+                            return float(state.state)
+                        except ValueError:
+                            pass
+
+        return None
 
     async def _get_calendar_events(self) -> list[dict[str, Any]]:
         """Get current and upcoming events from the calendar."""
@@ -295,7 +570,7 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
 
         # Priority 3: Room-specific comfort event
         piece_config = self.pieces.get(piece_id, {})
-        piece_name = piece_config.get("name", piece_id).lower()
+        piece_name = piece_config.get(CONF_PIECE_NAME, piece_id).lower()
 
         if piece_name in parsed_events["confort_pieces"]:
             return MODE_CONFORT, SOURCE_CALENDAR
@@ -373,7 +648,7 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
         """Find the next comfort event for a specific room."""
         now = dt_util.now()
         piece_config = self.pieces.get(piece_id, {})
-        piece_name = piece_config.get("name", piece_id).lower()
+        piece_name = piece_config.get(CONF_PIECE_NAME, piece_id).lower()
 
         next_event = None
         next_start = None
@@ -432,12 +707,19 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
             expiry = dt_util.now() + timedelta(minutes=duration)
 
         self._mode_overrides[piece_id] = (mode, expiry)
+        _LOGGER.info("Mode override set for %s: %s (duration: %s min)", piece_id, mode, duration)
         await self.async_request_refresh()
 
     async def async_reset_mode_override(self, piece_id: str | None = None) -> None:
         """Reset mode override for a room or all rooms."""
         if piece_id:
             self._mode_overrides.pop(piece_id, None)
+            _LOGGER.info("Mode override reset for %s", piece_id)
         else:
             self._mode_overrides.clear()
+            _LOGGER.info("All mode overrides reset")
         await self.async_request_refresh()
+
+    def get_learner(self) -> HeatingRateLearner:
+        """Get the heating rate learner for external access."""
+        return self._learner

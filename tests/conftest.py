@@ -33,12 +33,14 @@ from custom_components.chauffage_intelligent.coordinator import (
 
 
 @pytest.fixture
-def mock_hass():
+def mock_hass(tmp_path):
     """Create a mock Home Assistant instance."""
     hass = MagicMock()
     hass.states = MagicMock()
     hass.services = MagicMock()
     hass.services.async_call = AsyncMock()
+    # Mock config path for learner storage
+    hass.config.path.return_value = str(tmp_path / ".storage")
     return hass
 
 

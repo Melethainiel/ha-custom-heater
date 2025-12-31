@@ -123,8 +123,12 @@ class ChauffageIntelligentClimate(
                     "temperature_cible": self._piece_data.get("consigne"),
                     "temperature_actuelle": self._piece_data.get("temperature"),
                     "vitesse_chauffe": self._piece_data.get("vitesse_chauffe"),
+                    "vitesse_apprise": self._piece_data.get("vitesse_apprise"),
                     "temps_prechauffage": self._piece_data.get("temps_prechauffage"),
                     "prechauffage_actif": self._piece_data.get("prechauffage_actif"),
+                    "prochain_evenement": self._piece_data.get("prochain_evenement"),
+                    "learning_samples": self._piece_data.get("learning_samples"),
+                    "learning_avg_rate": self._piece_data.get("learning_avg_rate"),
                 }
             )
 

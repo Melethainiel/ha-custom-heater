@@ -229,16 +229,19 @@ def verifier_prechauffage(piece, evenements_calendrier):
 ```python
 {
     "mode_calcule": "confort",           # Mode résolu par la logique
-    "source_mode": "calendrier",         # calendrier | presence | defaut
+    "source_mode": "calendrier",         # calendrier | presence | defaut | anticipation
     "temperature_cible": 20.0,
     "temperature_actuelle": 18.5,
-    "vitesse_chauffe": 1.2,              # °C/h
+    "vitesse_chauffe": 1.2,              # °C/h (mesurée)
+    "vitesse_apprise": 1.4,              # °C/h (prédite par apprentissage)
     "temps_prechauffage": 45,            # minutes
     "prechauffage_actif": False,
     "prochain_evenement": "2025-01-02T18:00:00",
     "radiateur_entity": "climate.bilbao_salon",
     "sonde_entity": "sensor.temperature_salon",
-    "type_piece": "salon"
+    "type_piece": "salon",
+    "learning_samples": 42,              # Nombre d'observations apprises
+    "learning_avg_rate": 1.35            # Vitesse moyenne apprise
 }
 ```
 
@@ -585,11 +588,47 @@ def _parse_calendar_events(self, events: list) -> dict:
 
 -----
 
+## Apprentissage automatique des vitesses de chauffe
+
+Le système apprend automatiquement les vitesses de chauffe de chaque pièce en fonction des conditions.
+
+### Fonctionnement
+
+1. **Collecte des données** : Pendant les périodes de chauffage (mode Confort), le système enregistre :
+   - La vitesse de chauffe mesurée (°C/h)
+   - La température extérieure (si disponible)
+   - L'heure de la journée
+
+2. **Filtrage** : Seules les vitesses valides sont enregistrées :
+   - Minimum : 0.3 °C/h (évite les mesures de refroidissement)
+   - Maximum : 5.0 °C/h (évite les valeurs aberrantes)
+
+3. **Prédiction pondérée** : Les prédictions sont pondérées par :
+   - **Période de la journée** : Nuit (22h-6h), Matin (6h-12h), Après-midi (12h-18h), Soir (18h-22h)
+   - **Température extérieure** : Les observations avec une température extérieure similaire (±5°C) sont privilégiées
+
+4. **Utilisation** : La vitesse apprise est utilisée pour :
+   - Améliorer le calcul du temps de préchauffage
+   - Fournir une estimation quand aucune mesure récente n'est disponible
+
+### Persistance
+
+Les données apprises sont stockées dans `.storage/chauffage_intelligent_learned_rates.json` et persistent entre les redémarrages.
+
+### Paramètres
+
+| Paramètre | Valeur | Description |
+|-----------|--------|-------------|
+| `LEARNING_MIN_SAMPLES` | 5 | Minimum d'observations avant d'utiliser les prédictions |
+| `LEARNING_MAX_SAMPLES` | 100 | Maximum d'observations conservées par pièce |
+
+-----
+
 ## Évolutions futures possibles
 
 - [ ] Boost salle de bain (mode temporaire 30 min)
-- [ ] Prise en compte météo extérieure
+- [x] ~~Prise en compte météo extérieure~~ (implémenté via apprentissage)
 - [ ] Détection fenêtre ouverte (chute rapide de température)
-- [ ] Apprentissage automatique des vitesses de chauffe par conditions
+- [x] ~~Apprentissage automatique des vitesses de chauffe par conditions~~ (implémenté)
 - [ ] Multi-calendrier (un par pièce optionnellement)
 - [ ] Intégration avec Scheduler component
