@@ -8,7 +8,14 @@ import pytest
 from homeassistant.components.climate import HVACMode
 from homeassistant.const import ATTR_TEMPERATURE
 
-from custom_components.chauffage_intelligent.climate import ChauffageIntelligentClimate
+from custom_components.chauffage_intelligent.climate import (
+    PRESET_AUTO,
+    PRESET_CONFORT,
+    PRESET_ECO,
+    PRESET_HORS_GEL,
+    PRESET_MODES,
+    ChauffageIntelligentClimate,
+)
 from custom_components.chauffage_intelligent.const import (
     CONF_PIECE_AREA_ID,
     CONF_PIECE_NAME,
@@ -21,6 +28,7 @@ from custom_components.chauffage_intelligent.const import (
     MODE_ECO,
     MODE_HORS_GEL,
     MODE_OFF,
+    SOURCE_OVERRIDE,
 )
 
 
@@ -246,3 +254,111 @@ class TestChauffageIntelligentClimateActions:
         await climate.async_set_hvac_mode(HVACMode.HEAT)
 
         coordinator.async_reset_mode_override.assert_called_once_with("bureau")
+
+
+class TestChauffageIntelligentClimatePresetModes:
+    """Test ChauffageIntelligentClimate preset modes."""
+
+    def test_preset_modes_available(self, coordinator, piece_config):
+        """Test that preset modes are available."""
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        assert climate._attr_preset_modes == PRESET_MODES
+        assert PRESET_AUTO in climate._attr_preset_modes
+        assert PRESET_CONFORT in climate._attr_preset_modes
+        assert PRESET_ECO in climate._attr_preset_modes
+        assert PRESET_HORS_GEL in climate._attr_preset_modes
+
+    def test_preset_mode_returns_auto_when_no_data(self, coordinator, piece_config):
+        """Test preset_mode returns Automatique when no data."""
+        coordinator.data = None
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        assert climate.preset_mode == PRESET_AUTO
+
+    def test_preset_mode_returns_auto_when_source_not_override(self, coordinator, piece_config):
+        """Test preset_mode returns Automatique when source is not override."""
+        coordinator.data = {"pieces": {"bureau": {"mode": "confort", "source": "calendrier"}}}
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        assert climate.preset_mode == PRESET_AUTO
+
+    def test_preset_mode_returns_confort_when_override(self, coordinator, piece_config):
+        """Test preset_mode returns Confort when overridden to confort."""
+        coordinator.data = {"pieces": {"bureau": {"mode": "confort", "source": SOURCE_OVERRIDE}}}
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        assert climate.preset_mode == PRESET_CONFORT
+
+    def test_preset_mode_returns_eco_when_override(self, coordinator, piece_config):
+        """Test preset_mode returns Éco when overridden to eco."""
+        coordinator.data = {"pieces": {"bureau": {"mode": "eco", "source": SOURCE_OVERRIDE}}}
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        assert climate.preset_mode == PRESET_ECO
+
+    def test_preset_mode_returns_hors_gel_when_override(self, coordinator, piece_config):
+        """Test preset_mode returns Hors-gel when overridden to hors_gel."""
+        coordinator.data = {"pieces": {"bureau": {"mode": "hors_gel", "source": SOURCE_OVERRIDE}}}
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        assert climate.preset_mode == PRESET_HORS_GEL
+
+    def test_preset_mode_returns_auto_for_unknown_mode(self, coordinator, piece_config):
+        """Test preset_mode returns Automatique for unknown mode."""
+        coordinator.data = {"pieces": {"bureau": {"mode": "unknown", "source": SOURCE_OVERRIDE}}}
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        assert climate.preset_mode == PRESET_AUTO
+
+    @pytest.mark.asyncio
+    async def test_async_set_preset_mode_auto(self, coordinator, piece_config):
+        """Test setting preset mode to Automatique resets override."""
+        coordinator.async_reset_mode_override = AsyncMock()
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        await climate.async_set_preset_mode(PRESET_AUTO)
+
+        coordinator.async_reset_mode_override.assert_called_once_with("bureau")
+
+    @pytest.mark.asyncio
+    async def test_async_set_preset_mode_confort(self, coordinator, piece_config):
+        """Test setting preset mode to Confort."""
+        coordinator.async_set_mode_override = AsyncMock()
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        await climate.async_set_preset_mode(PRESET_CONFORT)
+
+        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_CONFORT)
+
+    @pytest.mark.asyncio
+    async def test_async_set_preset_mode_eco(self, coordinator, piece_config):
+        """Test setting preset mode to Éco."""
+        coordinator.async_set_mode_override = AsyncMock()
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        await climate.async_set_preset_mode(PRESET_ECO)
+
+        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_ECO)
+
+    @pytest.mark.asyncio
+    async def test_async_set_preset_mode_hors_gel(self, coordinator, piece_config):
+        """Test setting preset mode to Hors-gel."""
+        coordinator.async_set_mode_override = AsyncMock()
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        await climate.async_set_preset_mode(PRESET_HORS_GEL)
+
+        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_HORS_GEL)
+
+    @pytest.mark.asyncio
+    async def test_async_set_preset_mode_unknown(self, coordinator, piece_config):
+        """Test setting unknown preset mode does nothing."""
+        coordinator.async_set_mode_override = AsyncMock()
+        coordinator.async_reset_mode_override = AsyncMock()
+        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+
+        await climate.async_set_preset_mode("Unknown")
+
+        coordinator.async_set_mode_override.assert_not_called()
+        coordinator.async_reset_mode_override.assert_not_called()
