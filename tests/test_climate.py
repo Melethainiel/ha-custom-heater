@@ -1,364 +1,227 @@
-"""Tests for climate entities."""
+"""Tests for the climate entity."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from homeassistant.components.climate import HVACMode
-from homeassistant.const import ATTR_TEMPERATURE
+from homeassistant.components.climate import HVACAction, HVACMode
 
 from custom_components.chauffage_intelligent.climate import (
-    PRESET_AUTO,
-    PRESET_CONFORT,
-    PRESET_ECO,
-    PRESET_HORS_GEL,
-    PRESET_MODES,
     ChauffageIntelligentClimate,
+    async_setup_entry,
 )
 from custom_components.chauffage_intelligent.const import (
-    CONF_PIECE_AREA_ID,
-    CONF_PIECE_NAME,
-    CONF_PIECE_RADIATEURS,
-    CONF_PIECE_SONDE,
-    CONF_PIECE_TEMPERATURES,
-    CONF_PIECE_TYPE,
     DOMAIN,
-    MODE_CONFORT,
-    MODE_ECO,
-    MODE_HORS_GEL,
-    MODE_OFF,
-    SOURCE_OVERRIDE,
+    SOURCE_DEFAUT,
+    SOURCE_MANUEL,
+    SOURCE_PLANNING,
 )
+
+MONDAY_8H = datetime(2026, 9, 7, 8, 0)
 
 
 @pytest.fixture
-def piece_config():
-    """Create a piece configuration for testing."""
-    return {
-        CONF_PIECE_NAME: "Bureau",
-        CONF_PIECE_AREA_ID: "bureau",
-        CONF_PIECE_TYPE: "bureau",
-        CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
-        CONF_PIECE_SONDE: "sensor.temperature_bureau",
-        CONF_PIECE_TEMPERATURES: {
-            MODE_CONFORT: 19,
-            MODE_ECO: 17,
-            MODE_HORS_GEL: 7,
-        },
+def entity(coordinator):
+    """A climate entity for the office."""
+    return ChauffageIntelligentClimate(coordinator, "bureau", coordinator.pieces["bureau"])
+
+
+def set_data(coordinator, **overrides):
+    """Publish coordinator data for the office."""
+    payload = {
+        "consigne": 19.0,
+        "source": SOURCE_PLANNING,
+        "temperature": 18.0,
+        "creneau_actuel": "07:00-09:00",
+        "prochain_changement": MONDAY_8H.replace(hour=9).isoformat(),
+        "offset": 0.0,
+        "off": False,
     }
+    payload.update(overrides)
+    coordinator.data = {"pieces": {"bureau": payload}}
 
 
-class TestChauffageIntelligentClimate:
-    """Test ChauffageIntelligentClimate entity."""
+def test_unique_id_and_device(entity):
+    """The entity is identified per room and grouped under a device."""
+    assert entity.unique_id == f"{DOMAIN}_bureau"
+    assert (DOMAIN, "bureau") in entity.device_info["identifiers"]
 
-    def test_initialization(self, coordinator, piece_config):
-        """Test climate entity initialization."""
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
-        assert climate._attr_unique_id == f"{DOMAIN}_bureau"
-        assert climate._attr_name == "Chauffage Bureau"
-        assert climate._attr_min_temp == 7
-        assert climate._attr_max_temp == 21  # 19 + 2
+def test_reports_temperatures(entity, coordinator):
+    """Current and target temperatures come from the coordinator."""
+    set_data(coordinator)
 
-    def test_initialization_without_name(self, coordinator):
-        """Test climate entity initialization without piece name."""
-        piece_config = {CONF_PIECE_TEMPERATURES: {}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+    assert entity.current_temperature == 18.0
+    assert entity.target_temperature == 19.0
 
-        assert climate._attr_name == "Chauffage bureau"
 
-    def test_initialization_default_temps(self, coordinator):
-        """Test climate entity with default temperature limits."""
-        piece_config = {}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        # Defaults: hors_gel=7, confort=22
-        assert climate._attr_min_temp == 7
-        assert climate._attr_max_temp == 24  # 22 + 2
-
-    def test_piece_data_returns_data(self, coordinator, piece_config):
-        """Test _piece_data returns room data."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "confort", "temperature": 18.5}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate._piece_data == {"mode": "confort", "temperature": 18.5}
-
-    def test_piece_data_returns_none_when_no_data(self, coordinator, piece_config):
-        """Test _piece_data returns None when coordinator has no data."""
-        coordinator.data = None
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate._piece_data is None
-
-    def test_piece_data_returns_none_when_piece_not_found(self, coordinator, piece_config):
-        """Test _piece_data returns None when piece not in data."""
-        coordinator.data = {"pieces": {}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate._piece_data is None
-
-    def test_current_temperature(self, coordinator, piece_config):
-        """Test current_temperature property."""
-        coordinator.data = {"pieces": {"bureau": {"temperature": 18.5}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate.current_temperature == 18.5
-
-    def test_current_temperature_when_no_data(self, coordinator, piece_config):
-        """Test current_temperature returns None when no data."""
-        coordinator.data = None
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate.current_temperature is None
-
-    def test_target_temperature(self, coordinator, piece_config):
-        """Test target_temperature property."""
-        coordinator.data = {"pieces": {"bureau": {"consigne": 19.0}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate.target_temperature == 19.0
-
-    def test_target_temperature_when_no_data(self, coordinator, piece_config):
-        """Test target_temperature returns None when no data."""
-        coordinator.data = None
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate.target_temperature is None
-
-    def test_hvac_mode_returns_heat(self, coordinator, piece_config):
-        """Test hvac_mode returns HEAT when not off."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "confort"}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate.hvac_mode == HVACMode.HEAT
-
-    def test_hvac_mode_returns_off(self, coordinator, piece_config):
-        """Test hvac_mode returns OFF when mode is off."""
-        coordinator.data = {"pieces": {"bureau": {"mode": MODE_OFF}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate.hvac_mode == HVACMode.OFF
-
-    def test_hvac_mode_default_heat(self, coordinator, piece_config):
-        """Test hvac_mode defaults to HEAT when no data."""
-        coordinator.data = None
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        assert climate.hvac_mode == HVACMode.HEAT
+def test_handles_missing_coordinator_data(entity, coordinator):
+    """Before the first refresh the entity reports nothing rather than crashing."""
+    coordinator.data = None
 
-    def test_extra_state_attributes_basic(self, coordinator, piece_config):
-        """Test extra_state_attributes returns basic config."""
-        coordinator.data = None
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        attrs = climate.extra_state_attributes
-        assert attrs["radiateur_entities"] == ["climate.bilbao_bureau"]
-        assert attrs["sonde_entity"] == "sensor.temperature_bureau"
-        assert attrs["type_piece"] == "bureau"
-
-    def test_extra_state_attributes_with_data(self, coordinator, piece_config):
-        """Test extra_state_attributes includes piece data."""
-        coordinator.data = {
-            "pieces": {
-                "bureau": {
-                    "mode": "confort",
-                    "source": "calendrier",
-                    "consigne": 19.0,
-                    "temperature": 18.5,
-                    "vitesse_chauffe": 1.2,
-                    "vitesse_apprise": 1.4,
-                    "temps_prechauffage": 45,
-                    "prechauffage_actif": False,
-                    "prochain_evenement": "2025-01-02T18:00:00",
-                    "learning_samples": 42,
-                    "learning_avg_rate": 1.35,
-                }
-            }
-        }
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        attrs = climate.extra_state_attributes
-        assert attrs["mode_calcule"] == "confort"
-        assert attrs["source_mode"] == "calendrier"
-        assert attrs["temperature_cible"] == 19.0
-        assert attrs["temperature_actuelle"] == 18.5
-        assert attrs["vitesse_chauffe"] == 1.2
-        assert attrs["vitesse_apprise"] == 1.4
-        assert attrs["temps_prechauffage"] == 45
-        assert attrs["prechauffage_actif"] is False
-        assert attrs["prochain_evenement"] == "2025-01-02T18:00:00"
-        assert attrs["learning_samples"] == 42
-        assert attrs["learning_avg_rate"] == 1.35
-
-
-class TestChauffageIntelligentClimateActions:
-    """Test ChauffageIntelligentClimate actions."""
-
-    @pytest.mark.asyncio
-    async def test_async_set_temperature_confort(self, coordinator, piece_config):
-        """Test setting temperature to comfort mode."""
-        coordinator.async_set_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        await climate.async_set_temperature(**{ATTR_TEMPERATURE: 20.0})
-
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_CONFORT)
-
-    @pytest.mark.asyncio
-    async def test_async_set_temperature_eco(self, coordinator, piece_config):
-        """Test setting temperature to eco mode."""
-        coordinator.async_set_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        await climate.async_set_temperature(**{ATTR_TEMPERATURE: 18.0})
-
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_ECO)
-
-    @pytest.mark.asyncio
-    async def test_async_set_temperature_hors_gel(self, coordinator, piece_config):
-        """Test setting temperature to hors-gel mode."""
-        coordinator.async_set_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        await climate.async_set_temperature(**{ATTR_TEMPERATURE: 10.0})
-
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_HORS_GEL)
-
-    @pytest.mark.asyncio
-    async def test_async_set_temperature_none(self, coordinator, piece_config):
-        """Test setting temperature with None does nothing."""
-        coordinator.async_set_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        await climate.async_set_temperature()
-
-        coordinator.async_set_mode_override.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_async_set_hvac_mode_off(self, coordinator, piece_config):
-        """Test setting HVAC mode to OFF."""
-        coordinator.async_set_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
-
-        await climate.async_set_hvac_mode(HVACMode.OFF)
+    assert entity.current_temperature is None
+    assert entity.target_temperature is None
+    assert entity.hvac_mode == HVACMode.HEAT
 
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_OFF)
-
-    @pytest.mark.asyncio
-    async def test_async_set_hvac_mode_heat(self, coordinator, piece_config):
-        """Test setting HVAC mode to HEAT clears override."""
-        coordinator.async_reset_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
-        await climate.async_set_hvac_mode(HVACMode.HEAT)
+def test_hvac_mode_follows_the_off_flag(entity, coordinator):
+    """A room switched off reports OFF."""
+    set_data(coordinator, off=True)
+    assert entity.hvac_mode == HVACMode.OFF
 
-        coordinator.async_reset_mode_override.assert_called_once_with("bureau")
+    set_data(coordinator, off=False)
+    assert entity.hvac_mode == HVACMode.HEAT
 
 
-class TestChauffageIntelligentClimatePresetModes:
-    """Test ChauffageIntelligentClimate preset modes."""
+@pytest.mark.parametrize(
+    ("temperature", "consigne", "expected"),
+    [
+        (18.0, 19.0, HVACAction.HEATING),
+        (19.0, 19.0, HVACAction.IDLE),
+        (21.0, 19.0, HVACAction.IDLE),
+    ],
+)
+def test_hvac_action(entity, coordinator, temperature, consigne, expected):
+    """The action reflects whether the room still calls for heat."""
+    set_data(coordinator, temperature=temperature, consigne=consigne)
+    assert entity.hvac_action == expected
 
-    def test_preset_modes_available(self, coordinator, piece_config):
-        """Test that preset modes are available."""
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
-        assert climate._attr_preset_modes == PRESET_MODES
-        assert PRESET_AUTO in climate._attr_preset_modes
-        assert PRESET_CONFORT in climate._attr_preset_modes
-        assert PRESET_ECO in climate._attr_preset_modes
-        assert PRESET_HORS_GEL in climate._attr_preset_modes
+def test_hvac_action_when_off(entity, coordinator):
+    """A room switched off reports the OFF action."""
+    set_data(coordinator, off=True)
+    assert entity.hvac_action == HVACAction.OFF
 
-    def test_preset_mode_returns_auto_when_no_data(self, coordinator, piece_config):
-        """Test preset_mode returns Automatique when no data."""
-        coordinator.data = None
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
-        assert climate.preset_mode == PRESET_AUTO
+def test_hvac_action_without_a_reading(entity, coordinator):
+    """Without a temperature the action is unknown."""
+    set_data(coordinator, temperature=None)
+    assert entity.hvac_action is None
 
-    def test_preset_mode_returns_auto_when_source_not_override(self, coordinator, piece_config):
-        """Test preset_mode returns Automatique when source is not override."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "confort", "source": "calendrier"}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
-        assert climate.preset_mode == PRESET_AUTO
+def test_preset_is_planning_while_the_schedule_drives(entity, coordinator):
+    """No override means the Planning preset."""
+    set_data(coordinator, source=SOURCE_PLANNING)
+    assert entity.preset_mode == "Planning"
 
-    def test_preset_mode_returns_confort_when_override(self, coordinator, piece_config):
-        """Test preset_mode returns Confort when overridden to confort."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "confort", "source": SOURCE_OVERRIDE}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+    set_data(coordinator, source=SOURCE_DEFAUT)
+    assert entity.preset_mode == "Planning"
 
-        assert climate.preset_mode == PRESET_CONFORT
 
-    def test_preset_mode_returns_eco_when_override(self, coordinator, piece_config):
-        """Test preset_mode returns Éco when overridden to eco."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "eco", "source": SOURCE_OVERRIDE}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+def test_preset_matches_the_palette_when_overridden(entity, coordinator):
+    """An override landing on a palette value shows that preset."""
+    set_data(coordinator, source=SOURCE_MANUEL, consigne=19.0)
+    assert entity.preset_mode == "Confort"
 
-        assert climate.preset_mode == PRESET_ECO
+    set_data(coordinator, source=SOURCE_MANUEL, consigne=17.0)
+    assert entity.preset_mode == "Éco"
 
-    def test_preset_mode_returns_hors_gel_when_override(self, coordinator, piece_config):
-        """Test preset_mode returns Hors-gel when overridden to hors_gel."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "hors_gel", "source": SOURCE_OVERRIDE}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+    set_data(coordinator, source=SOURCE_MANUEL, consigne=7.0)
+    assert entity.preset_mode == "Hors-gel"
 
-        assert climate.preset_mode == PRESET_HORS_GEL
 
-    def test_preset_mode_returns_auto_for_unknown_mode(self, coordinator, piece_config):
-        """Test preset_mode returns Automatique for unknown mode."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "unknown", "source": SOURCE_OVERRIDE}}}
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+def test_preset_for_a_free_temperature(entity, coordinator):
+    """A forced temperature outside the palette shows no palette preset."""
+    set_data(coordinator, source=SOURCE_MANUEL, consigne=21.5)
+    assert entity.preset_mode == "Planning"
 
-        assert climate.preset_mode == PRESET_AUTO
 
-    @pytest.mark.asyncio
-    async def test_async_set_preset_mode_auto(self, coordinator, piece_config):
-        """Test setting preset mode to Automatique resets override."""
-        coordinator.async_reset_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+def test_attributes_expose_the_decision(entity, coordinator):
+    """The attributes explain where the setpoint came from."""
+    set_data(coordinator)
+    attrs = entity.extra_state_attributes
 
-        await climate.async_set_preset_mode(PRESET_AUTO)
+    assert attrs["source_consigne"] == SOURCE_PLANNING
+    assert attrs["creneau_actuel"] == "07:00-09:00"
+    assert attrs["prochain_changement"] == MONDAY_8H.replace(hour=9).isoformat()
+    assert attrs["radiateur_entities"] == ["climate.bilbao_bureau"]
+    assert attrs["sonde_entity"] == "sensor.temperature_bureau"
+    assert attrs["type_piece"] == "bureau"
 
-        coordinator.async_reset_mode_override.assert_called_once_with("bureau")
 
-    @pytest.mark.asyncio
-    async def test_async_set_preset_mode_confort(self, coordinator, piece_config):
-        """Test setting preset mode to Confort."""
-        coordinator.async_set_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+async def test_set_temperature_forces_an_override(entity, coordinator):
+    """Dragging the setpoint creates a manual override."""
+    coordinator.async_set_override = AsyncMock()
 
-        await climate.async_set_preset_mode(PRESET_CONFORT)
+    await entity.async_set_temperature(temperature=21.5)
 
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_CONFORT)
+    coordinator.async_set_override.assert_awaited_once_with("bureau", 21.5)
 
-    @pytest.mark.asyncio
-    async def test_async_set_preset_mode_eco(self, coordinator, piece_config):
-        """Test setting preset mode to Éco."""
-        coordinator.async_set_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
 
-        await climate.async_set_preset_mode(PRESET_ECO)
+async def test_set_temperature_without_a_value_does_nothing(entity, coordinator):
+    """A call with no temperature is ignored."""
+    coordinator.async_set_override = AsyncMock()
 
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_ECO)
+    await entity.async_set_temperature()
 
-    @pytest.mark.asyncio
-    async def test_async_set_preset_mode_hors_gel(self, coordinator, piece_config):
-        """Test setting preset mode to Hors-gel."""
-        coordinator.async_set_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+    coordinator.async_set_override.assert_not_awaited()
 
-        await climate.async_set_preset_mode(PRESET_HORS_GEL)
 
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", MODE_HORS_GEL)
+async def test_hvac_mode_off_switches_the_room_off(entity, coordinator):
+    """Setting OFF puts the room on frost protection."""
+    coordinator.async_set_off = AsyncMock()
 
-    @pytest.mark.asyncio
-    async def test_async_set_preset_mode_unknown(self, coordinator, piece_config):
-        """Test setting unknown preset mode does nothing."""
-        coordinator.async_set_mode_override = AsyncMock()
-        coordinator.async_reset_mode_override = AsyncMock()
-        climate = ChauffageIntelligentClimate(coordinator, "bureau", piece_config)
+    await entity.async_set_hvac_mode(HVACMode.OFF)
 
-        await climate.async_set_preset_mode("Unknown")
+    coordinator.async_set_off.assert_awaited_once_with("bureau", True)
 
-        coordinator.async_set_mode_override.assert_not_called()
-        coordinator.async_reset_mode_override.assert_not_called()
+
+async def test_hvac_mode_heat_returns_to_the_schedule(entity, coordinator):
+    """Setting HEAT switches the room back on."""
+    coordinator.async_set_off = AsyncMock()
+
+    await entity.async_set_hvac_mode(HVACMode.HEAT)
+
+    coordinator.async_set_off.assert_awaited_once_with("bureau", False)
+
+
+async def test_turn_on_and_off(entity, coordinator):
+    """The turn_on/turn_off shortcuts map to the off flag."""
+    coordinator.async_set_off = AsyncMock()
+
+    await entity.async_turn_off()
+    await entity.async_turn_on()
+
+    assert [call.args for call in coordinator.async_set_off.await_args_list] == [
+        ("bureau", True),
+        ("bureau", False),
+    ]
+
+
+async def test_preset_planning_clears_the_override(entity, coordinator):
+    """Picking Planning hands control back to the schedule."""
+    coordinator.async_reset_override = AsyncMock()
+
+    await entity.async_set_preset_mode("Planning")
+
+    coordinator.async_reset_override.assert_awaited_once_with("bureau")
+
+
+@pytest.mark.parametrize(
+    ("preset", "expected"), [("Confort", 19.0), ("Éco", 17.0), ("Hors-gel", 7.0)]
+)
+async def test_preset_applies_the_palette_value(entity, coordinator, preset, expected):
+    """A palette preset forces that room's temperature."""
+    coordinator.async_set_override = AsyncMock()
+
+    await entity.async_set_preset_mode(preset)
+
+    coordinator.async_set_override.assert_awaited_once_with("bureau", expected)
+
+
+async def test_setup_entry_creates_one_entity_per_room(hass_with_coordinator):
+    """Every configured room gets a climate entity."""
+    hass, entry, coordinator = hass_with_coordinator
+    added = []
+
+    await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+    assert {entity._piece_id for entity in added} == {"bureau", "salon"}
+
+
+def test_temperature_bounds_cover_the_palette(entity):
+    """The slider spans at least the room's palette."""
+    assert entity.min_temp <= 7.0
+    assert entity.max_temp >= 22.0

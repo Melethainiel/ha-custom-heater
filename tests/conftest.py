@@ -2,35 +2,78 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from custom_components.chauffage_intelligent.const import (
-    CONF_CALENDAR,
-    CONF_DERIVATIVE_WINDOW,
-    CONF_MIN_PREHEAT_TIME,
     CONF_PIECE_AREA_ID,
     CONF_PIECE_NAME,
+    CONF_PIECE_OFFSET,
     CONF_PIECE_RADIATEURS,
     CONF_PIECE_SONDE,
     CONF_PIECE_TEMPERATURES,
     CONF_PIECE_TYPE,
     CONF_PIECES,
-    CONF_PRESENCE_TRACKERS,
-    CONF_SECURITY_FACTOR,
-    DEFAULT_DERIVATIVE_WINDOW,
-    DEFAULT_MIN_PREHEAT_TIME,
-    DEFAULT_SECURITY_FACTOR,
-    MODE_CONFORT,
-    MODE_ECO,
-    MODE_HORS_GEL,
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
+    TEMP_CONFORT,
+    TEMP_ECO,
+    TEMP_HORS_GEL,
 )
 from custom_components.chauffage_intelligent.coordinator import (
     ChauffageIntelligentCoordinator,
 )
+
+
+class FakeState:
+    """Minimal stand-in for a Home Assistant State."""
+
+    def __init__(self, state: str, attributes: dict[str, Any] | None = None) -> None:
+        """Initialize the fake state."""
+        self.state = state
+        self.attributes = attributes or {}
+
+
+class FakeScheduleStore:
+    """In-memory replacement for ScheduleStore."""
+
+    def __init__(self, schedules: dict[str, list[dict[str, Any]]] | None = None) -> None:
+        """Initialize with optional pre-seeded schedules."""
+        from custom_components.chauffage_intelligent.schedule import normalize_slots
+
+        self._normalize = normalize_slots
+        self._schedules = {
+            piece_id: normalize_slots(slots) for piece_id, slots in (schedules or {}).items()
+        }
+        self.saved = 0
+
+    def get(self, piece_id: str) -> list[dict[str, Any]]:
+        """Return a room's schedule."""
+        return self._schedules.get(piece_id, [])
+
+    def has(self, piece_id: str) -> bool:
+        """Return True if a schedule exists."""
+        return piece_id in self._schedules
+
+    def all(self) -> dict[str, list[dict[str, Any]]]:
+        """Return every schedule."""
+        return dict(self._schedules)
+
+    async def async_set(
+        self, piece_id: str, slots: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Store a normalized schedule."""
+        normalized = self._normalize(slots)
+        self._schedules[piece_id] = normalized
+        self.saved += 1
+        return normalized
+
+    async def async_remove(self, piece_id: str) -> None:
+        """Drop a schedule."""
+        self._schedules.pop(piece_id, None)
 
 
 @pytest.fixture
@@ -40,17 +83,20 @@ def mock_hass(tmp_path):
     hass.states = MagicMock()
     hass.services = MagicMock()
     hass.services.async_call = AsyncMock()
-    # Mock config path for learner storage
+    # Close the coroutine we are handed so tests do not emit 'never awaited'.
+    hass.async_create_task = MagicMock(side_effect=lambda coro, *a, **k: coro.close())
+    # The coordinator's debouncer would try to await a MagicMock; returning None
+    # keeps async_request_refresh a no-op in these unit tests.
+    hass.async_run_hass_job = MagicMock(return_value=None)
     hass.config.path.return_value = str(tmp_path / ".storage")
     return hass
 
 
 @pytest.fixture
 def basic_config():
-    """Create a basic configuration."""
+    """Create a basic configuration with two rooms."""
     return {
-        CONF_CALENDAR: "calendar.google_home",
-        CONF_PRESENCE_TRACKERS: ["device_tracker.phone_1", "device_tracker.phone_2"],
+        CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL,
         CONF_PIECES: {
             "bureau": {
                 CONF_PIECE_NAME: "Bureau",
@@ -59,10 +105,11 @@ def basic_config():
                 CONF_PIECE_RADIATEURS: ["climate.bilbao_bureau"],
                 CONF_PIECE_SONDE: "sensor.temperature_bureau",
                 CONF_PIECE_TEMPERATURES: {
-                    MODE_CONFORT: 19,
-                    MODE_ECO: 17,
-                    MODE_HORS_GEL: 7,
+                    TEMP_CONFORT: 19,
+                    TEMP_ECO: 17,
+                    TEMP_HORS_GEL: 7,
                 },
+                CONF_PIECE_OFFSET: 0.0,
             },
             "salon": {
                 CONF_PIECE_NAME: "Salon",
@@ -71,81 +118,73 @@ def basic_config():
                 CONF_PIECE_RADIATEURS: ["climate.bilbao_salon"],
                 CONF_PIECE_SONDE: "sensor.temperature_salon",
                 CONF_PIECE_TEMPERATURES: {
-                    MODE_CONFORT: 20,
-                    MODE_ECO: 17,
-                    MODE_HORS_GEL: 7,
+                    TEMP_CONFORT: 20,
+                    TEMP_ECO: 17,
+                    TEMP_HORS_GEL: 7,
                 },
-            },
-            "chambre": {
-                CONF_PIECE_NAME: "Chambre",
-                CONF_PIECE_AREA_ID: "chambre",
-                CONF_PIECE_TYPE: "chambre",
-                CONF_PIECE_RADIATEURS: ["climate.bilbao_chambre"],
-                CONF_PIECE_SONDE: "sensor.temperature_chambre",
-                CONF_PIECE_TEMPERATURES: {
-                    MODE_CONFORT: 18,
-                    MODE_ECO: 16,
-                    MODE_HORS_GEL: 7,
-                },
+                CONF_PIECE_OFFSET: 0.0,
             },
         },
-        CONF_SECURITY_FACTOR: DEFAULT_SECURITY_FACTOR,
-        CONF_MIN_PREHEAT_TIME: DEFAULT_MIN_PREHEAT_TIME,
-        CONF_DERIVATIVE_WINDOW: DEFAULT_DERIVATIVE_WINDOW,
     }
 
 
 @pytest.fixture
-def coordinator(mock_hass, basic_config):
-    """Create a coordinator instance for testing."""
-    with (
-        patch.object(
-            ChauffageIntelligentCoordinator,
-            "_async_update_data",
-            new_callable=AsyncMock,
-        ),
-        patch("homeassistant.helpers.frame.report_usage"),
-    ):
-        coord = ChauffageIntelligentCoordinator(
-            mock_hass,
-            basic_config,
-            update_interval=timedelta(minutes=5),
+def schedules():
+    """A weekday morning comfort slot for the office."""
+    return {
+        "bureau": [
+            {"day": day, "start": "07:00", "end": "09:00", "temperature": 19.0}
+            for day in range(5)
+        ],
+        "salon": [],
+    }
+
+
+@pytest.fixture
+def store(schedules):
+    """An in-memory schedule store."""
+    return FakeScheduleStore(schedules)
+
+
+@pytest.fixture
+def coordinator(mock_hass, basic_config, store):
+    """A coordinator wired to the mock hass and in-memory store."""
+    return ChauffageIntelligentCoordinator(
+        mock_hass,
+        basic_config,
+        store,
+        update_interval=timedelta(seconds=DEFAULT_UPDATE_INTERVAL),
+    )
+
+
+@pytest.fixture
+def radiator_state():
+    """Factory building a plausible radiator state."""
+
+    def _build(
+        temperature: float | None = 17.0,
+        state: str = "heat",
+        current_temperature: float = 18.0,
+        min_temp: float = 7.0,
+        max_temp: float = 30.0,
+    ) -> FakeState:
+        return FakeState(
+            state,
+            {
+                "temperature": temperature,
+                "current_temperature": current_temperature,
+                "min_temp": min_temp,
+                "max_temp": max_temp,
+            },
         )
-        return coord
+
+    return _build
 
 
 @pytest.fixture
-def mock_state():
-    """Create a factory for mock states."""
-
-    def _create_state(state: str, attributes: dict[str, Any] | None = None):
-        mock = MagicMock()
-        mock.state = state
-        mock.attributes = attributes or {}
-        return mock
-
-    return _create_state
-
-
-@pytest.fixture
-def calendar_event_factory():
-    """Create a factory for calendar events."""
-
-    def _create_event(
-        summary: str,
-        start: datetime | None = None,
-        end: datetime | None = None,
-        offset_minutes: int = 0,
-        duration_minutes: int = 60,
-    ) -> dict[str, Any]:
-        if start is None:
-            start = datetime.now() + timedelta(minutes=offset_minutes)
-        if end is None:
-            end = start + timedelta(minutes=duration_minutes)
-        return {
-            "summary": summary,
-            "start": start.isoformat(),
-            "end": end.isoformat(),
-        }
-
-    return _create_event
+def hass_with_coordinator(mock_hass, coordinator):
+    """A hass whose data holds a coordinator under a fake entry id."""
+    entry = MagicMock()
+    entry.entry_id = "test_entry"
+    mock_hass.data = {"chauffage_intelligent": {"test_entry": coordinator}}
+    return mock_hass, entry, coordinator

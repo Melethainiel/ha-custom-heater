@@ -2,187 +2,230 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 
-Custom component Home Assistant pour gérer intelligemment des radiateurs Zigbee avec planification calendrier et anticipation du préchauffage.
+Custom component Home Assistant pour piloter des radiateurs (Zigbee ou autres) à partir
+d'un **planning hebdomadaire intégré**, édité depuis un panneau dédié dans la barre latérale.
+
+Une température par plage horaire. Pas de calendrier externe, pas de prédiction.
 
 ## Fonctionnalités
 
-- **Modes par pièce** : Confort, Eco, Hors-gel, Off
-- **Planification via Google Calendar** : Contrôlez votre chauffage depuis votre calendrier
-- **Détection de présence** : Passage automatique en mode Eco quand personne n'est à la maison
-- **Anticipation du préchauffage** : Calcul automatique du temps nécessaire pour atteindre la température cible
-- **Apprentissage automatique** : Le système apprend les vitesses de chauffe de chaque pièce pour améliorer les prédictions
+- **Planning hebdomadaire intégré** : une grille 7 jours × 48 créneaux de 30 min par pièce,
+  peinte à la souris ou au doigt depuis le panneau « Chauffage ».
+- **Une température par créneau** : la consigne est celle du créneau courant, point.
+- **Application fiable de la consigne** : le radiateur est rallumé s'il est éteint, la
+  consigne est bornée à sa plage, et n'est réécrite que si elle a réellement changé.
+- **Surcharge manuelle** : forcez une température depuis l'entité climate ; elle rend la
+  main au planning au créneau suivant.
+- **Décalage de consigne par pièce** : si le radiateur régule au-dessus ou en dessous de la
+  température réelle de la pièce.
 
 ## Installation
 
 ### HACS (recommandé)
 
-1. Ouvrez HACS dans Home Assistant
-2. Cliquez sur "Intégrations"
-3. Cliquez sur les 3 points en haut à droite → "Dépôts personnalisés"
-4. Ajoutez l'URL du dépôt avec la catégorie "Intégration"
-5. Recherchez "Chauffage Intelligent" et installez
-6. Redémarrez Home Assistant
+1. HACS → Intégrations → ⋮ → Dépôts personnalisés
+2. Ajoutez l'URL du dépôt, catégorie « Intégration »
+3. Installez « Chauffage Intelligent », puis redémarrez Home Assistant
 
-### Installation manuelle
+### Manuelle
 
-1. Téléchargez le dossier `custom_components/chauffage_intelligent`
-2. Copiez-le dans votre dossier `config/custom_components/`
-3. Redémarrez Home Assistant
+Copiez `custom_components/chauffage_intelligent` dans votre dossier `config/custom_components/`,
+puis redémarrez Home Assistant.
+
+> Home Assistant 2024.11 ou plus récent est requis.
 
 ## Configuration
 
 ### Prérequis
 
-- **Calendrier Google** configuré dans Home Assistant
-- **Device trackers** pour la détection de présence (app mobile HA, etc.)
-- **Radiateurs** exposés comme entités `climate.*`
-- **Sondes de température** (optionnel) comme entités `sensor.*`
+- Des radiateurs exposés comme entités `climate.*`, rattachés à une **zone** (area)
+- Optionnel mais recommandé : une sonde de température par pièce (`sensor.*` avec
+  `device_class: temperature`)
 
 ### Ajout de l'intégration
 
-1. Allez dans **Paramètres** → **Appareils et services**
-2. Cliquez sur **Ajouter une intégration**
-3. Recherchez "Chauffage Intelligent"
-4. Suivez l'assistant de configuration :
-   - Sélectionnez votre calendrier Google
-   - Choisissez vos device trackers de présence
-   - Ajoutez vos pièces une par une
+1. **Paramètres** → **Appareils et services** → **Ajouter une intégration**
+2. Recherchez « Chauffage Intelligent »
+3. Réglez l'intervalle de vérification, puis ajoutez vos pièces une par une :
+   - Zone (les zones contenant une entité `climate` sont proposées)
+   - Type de pièce, radiateurs, sonde de température
+   - Palette de températures : Confort / Éco / Hors-gel
+   - Décalage de consigne (laissez à 0 pour commencer)
 
-### Événements calendrier
+Chaque pièce reçoit un planning de départ (semaine 07h-09h et 17h30-22h en confort,
+week-end 08h-22h) que vous ajustez ensuite dans le panneau.
 
-Créez des événements dans votre calendrier Google pour contrôler le chauffage :
+## Le panneau « Chauffage »
 
-| Événement | Effet |
-|-----------|-------|
-| `Absence` | Toute la maison en mode Hors-gel |
-| `Confort` | Toute la maison en mode Confort |
-| `Confort Bureau` | Seul le bureau en Confort |
-| `Confort Chambre` | Seule la chambre en Confort |
+Un lien **Chauffage** apparaît dans la barre latérale après l'installation.
 
-> **Note** : Le matching est insensible à la casse (`confort bureau` = `Confort Bureau`)
+- **Onglets** en haut : une pièce à la fois, avec sa température actuelle, sa consigne, la
+  source de cette consigne et le prochain changement.
+- **Palette** : choisissez Confort, Éco, Hors-gel, une valeur libre, ou « Hors plage ».
+- **Grille** : cliquez-glissez pour peindre les créneaux. Cliquez sur un nom de jour pour
+  remplir la journée entière, sur ⇥ pour copier cette journée sur toute la semaine.
+- **Copier vers…** duplique le planning de la pièce courante vers une autre.
+- Rien n'est appliqué avant **Enregistrer**.
 
-## Logique de résolution du mode
+Un créneau laissé « hors plage » retombe sur la température **Éco** de la pièce.
 
-Priorité (de la plus haute à la plus basse) :
+## Résolution de la consigne
 
-1. Événement "Absence" → Hors-gel (forcé)
-2. Personne à la maison → Eco
-3. Événement "Confort {pièce}" → Confort pour cette pièce
-4. Événement "Confort" → Confort global
-5. Aucune condition → Eco (défaut)
+Priorité, de la plus haute à la plus basse :
+
+| # | Condition | Consigne |
+|---|-----------|----------|
+| 1 | Pièce éteinte (`hvac_mode: off`) | Hors-gel |
+| 2 | Surcharge manuelle active | La température forcée |
+| 3 | Un créneau du planning couvre l'instant présent | La température du créneau |
+| 4 | Sinon | Éco |
+
+La consigne est recalculée :
+
+- à chaque changement de créneau, **à la minute pile** ;
+- à chaque changement d'état d'un radiateur (consigne modifiée à la main, radiateur éteint,
+  radiateur qui revient après une coupure) ;
+- toutes les 5 minutes par défaut, en filet de sécurité.
+
+## Application aux radiateurs
+
+Pour chaque radiateur de la pièce, à chaque recalcul :
+
+1. Radiateur `unavailable` ou inexistant → on n'écrit pas, un avertissement est journalisé.
+2. `consigne + décalage`, borné à `min_temp` / `max_temp` du radiateur.
+3. Radiateur en `off` → `climate.set_hvac_mode` vers `heat` (un radiateur éteint ignore la
+   consigne).
+4. `climate.set_temperature` **uniquement** si la valeur diffère de plus de 0,1 °C de celle
+   que le radiateur annonce.
+
+Le point 4 évite de saturer le réseau Zigbee, et rend le système auto-réparateur : une
+consigne qui n'a pas été prise en compte est réémise au cycle suivant.
+
+### Décalage de consigne
+
+Le radiateur régule sur **sa** sonde interne, souvent plus chaude que la pièce. Si votre
+salon plafonne à 18 °C alors que la consigne est à 20 °C, réglez un décalage de `+2` dans
+les options de la pièce : le composant enverra 22 °C au radiateur pour obtenir 20 °C dans
+la pièce. Laissé à `0`, le comportement est celui d'une consigne directe.
 
 ## Entités créées
 
-### Par pièce
+Une pièce = un appareil Home Assistant regroupant :
 
 | Entité | Description |
 |--------|-------------|
-| `climate.chauffage_{piece}` | Contrôle principal |
-| `sensor.{piece}_mode_calcule` | Mode actuel |
-| `sensor.{piece}_temperature_cible` | Consigne en °C |
-| `sensor.{piece}_temps_prechauffage` | Minutes estimées |
-| `sensor.{piece}_vitesse_chauffe` | °C/h actuel |
-| `binary_sensor.{piece}_prechauffage_actif` | Anticipation en cours |
+| `climate.chauffage_{piece}` | Contrôle principal : consigne, marche/arrêt, presets |
+| `sensor.{piece}_temperature_cible` | Consigne résolue en °C |
+| `sensor.{piece}_source_consigne` | `planning` / `manuel` / `defaut` / `off` |
+| `select.{piece}_mode` | Planning / Confort / Éco / Hors-gel |
 
-### Globales
+### Presets de l'entité climate
 
-| Entité | Description |
-|--------|-------------|
-| `binary_sensor.chauffage_maison_occupee` | Présence maison |
-| `sensor.chauffage_mode_global` | Mode dominant |
+| Preset | Effet |
+|--------|-------|
+| Planning | Annule la surcharge, le planning reprend la main |
+| Confort / Éco / Hors-gel | Force la valeur correspondante de la palette de la pièce |
+
+Régler directement la température sur l'entité climate crée une surcharge jusqu'au prochain
+créneau. `hvac_mode: off` bascule la pièce en hors-gel.
 
 ## Services
 
-### `chauffage_intelligent.set_mode`
-
-Force un mode pour une pièce.
+### `chauffage_intelligent.set_temperature`
 
 ```yaml
-service: chauffage_intelligent.set_mode
+action: chauffage_intelligent.set_temperature
 data:
   piece: bureau
-  mode: confort  # confort | eco | hors_gel | off
-  duree: 120     # minutes (optionnel)
+  temperature: 21
+  duree: 120   # minutes, optionnel (défaut : jusqu'au prochain créneau)
 ```
 
-### `chauffage_intelligent.reset_mode`
-
-Annule l'override manuel.
+### `chauffage_intelligent.reset`
 
 ```yaml
-service: chauffage_intelligent.reset_mode
+action: chauffage_intelligent.reset
 data:
-  piece: bureau  # optionnel, toutes les pièces si omis
+  piece: bureau   # optionnel, toutes les pièces si omis
+```
+
+### `chauffage_intelligent.set_schedule`
+
+Remplace le planning d'une pièce. Utile pour les automatisations et les sauvegardes ;
+l'édition courante se fait dans le panneau.
+
+```yaml
+action: chauffage_intelligent.set_schedule
+data:
+  piece: bureau
+  slots:
+    - day: 0        # 0 = lundi … 6 = dimanche
+      start: "07:00"
+      end: "09:00"
+      temperature: 20
 ```
 
 ### `chauffage_intelligent.refresh`
 
-Force un recalcul immédiat.
-
-```yaml
-service: chauffage_intelligent.refresh
-```
+Force un recalcul et une réapplication immédiate.
 
 ## Températures par défaut
 
-| Type de pièce | Confort | Eco | Hors-gel |
+| Type de pièce | Confort | Éco | Hors-gel |
 |---------------|---------|-----|----------|
-| Salon | 20°C | 17°C | 7°C |
-| Chambre | 18°C | 16°C | 7°C |
-| Chambre enfant | 19°C | 17°C | 7°C |
-| Bureau | 19°C | 17°C | 7°C |
-| Salle de bain | 22°C | 17°C | 7°C |
+| Salon | 20 °C | 17 °C | 7 °C |
+| Chambre | 18 °C | 16 °C | 7 °C |
+| Chambre enfant | 19 °C | 17 °C | 7 °C |
+| Bureau | 19 °C | 17 °C | 7 °C |
+| Salle de bain | 22 °C | 17 °C | 7 °C |
 
-## Anticipation du préchauffage
+Ces valeurs ne sont qu'une palette de départ : seules les températures posées dans le
+planning déterminent le chauffage.
 
-Le système calcule automatiquement le temps nécessaire pour atteindre la température cible en se basant sur :
+## Migration depuis la version 1.x
 
-- La température actuelle
-- La vitesse de chauffe mesurée (°C/h)
-- Un facteur de sécurité configurable (défaut: 1.3)
+La mise à jour est automatique au démarrage :
 
-Si un événement "Confort" est prévu dans le calendrier, le préchauffage démarre automatiquement pour que la température cible soit atteinte à l'heure de l'événement.
+- Les pièces, radiateurs, sondes et palettes de températures sont conservés.
+- Le calendrier Google, les device trackers de présence, l'anticipation de préchauffage et
+  l'apprentissage des vitesses de chauffe sont supprimés, ainsi que le fichier
+  `.storage/chauffage_intelligent_learned_rates.json`.
+- Chaque pièce reçoit un planning de départ, à ajuster dans le panneau.
 
-## Apprentissage automatique
-
-Le système apprend automatiquement les caractéristiques thermiques de chaque pièce :
-
-- **Collecte** : Pendant les phases de chauffage, le système enregistre la vitesse de chauffe avec les conditions (heure, température extérieure)
-- **Prédiction** : Les estimations sont pondérées selon la similarité avec les conditions actuelles
-- **Persistance** : Les données sont sauvegardées dans `.storage/chauffage_intelligent_learned_rates.json`
-
-### Attributs exposés
-
-| Attribut | Description |
-|----------|-------------|
-| `vitesse_apprise` | Vitesse de chauffe prédite (°C/h) |
-| `learning_samples` | Nombre d'observations enregistrées |
-| `learning_avg_rate` | Vitesse moyenne apprise |
-
-L'apprentissage nécessite au minimum 5 observations avant d'utiliser les prédictions.
+Entités disparues : `binary_sensor.chauffage_maison_occupee`,
+`binary_sensor.{piece}_prechauffage_actif`, `sensor.chauffage_mode_global`,
+`sensor.{piece}_mode_calcule`, `sensor.{piece}_temps_prechauffage`,
+`sensor.{piece}_vitesse_chauffe`. Les services `set_mode` et `reset_mode` sont remplacés par
+`set_temperature` et `reset`.
 
 ## Développement
 
-### Tests
-
 ```bash
-pip install -r requirements-dev.txt
-pytest tests/
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest tests/
+.venv/bin/ruff check custom_components tests
 ```
 
 ### Structure
 
 ```
 custom_components/chauffage_intelligent/
-├── __init__.py       # Setup et services
-├── coordinator.py    # Logique centrale
-├── climate.py        # Entités Climate
-├── sensor.py         # Entités Sensor
-├── binary_sensor.py  # Binary Sensors
-├── config_flow.py    # UI de configuration
-└── const.py          # Constantes
+├── __init__.py         # Setup, migration, services
+├── coordinator.py      # Résolution et application des consignes
+├── schedule.py         # Modèle de planning (fonctions pures)
+├── storage.py          # Persistance des plannings
+├── websocket_api.py    # API du panneau
+├── panel.py            # Enregistrement du panneau
+├── frontend/panel.js   # Éditeur de planning
+├── entity.py           # Entité de base
+├── climate.py          # Entités Climate
+├── sensor.py           # Entités Sensor
+├── select.py           # Entités Select
+├── config_flow.py      # UI de configuration
+└── const.py            # Constantes
 ```
 
 ## Licence
 
-MIT License - Voir [LICENSE](LICENSE)
+MIT License — voir [LICENSE](LICENSE)

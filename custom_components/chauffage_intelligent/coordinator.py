@@ -2,221 +2,61 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.components.climate import HVACMode
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers.event import (
+    async_track_point_in_time,
+    async_track_state_change_event,
+)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_CALENDAR,
-    CONF_DERIVATIVE_WINDOW,
-    CONF_MIN_PREHEAT_TIME,
-    CONF_PIECE_NAME,
+    CONF_PIECE_OFFSET,
     CONF_PIECE_RADIATEURS,
     CONF_PIECE_SONDE,
     CONF_PIECE_TEMPERATURES,
     CONF_PIECES,
-    CONF_PRESENCE_TRACKERS,
-    CONF_SECURITY_FACTOR,
-    DEFAULT_HEATING_RATE,
+    DEFAULT_OFFSET,
     DOMAIN,
-    EVENT_ABSENCE,
-    EVENT_CONFORT,
-    MODE_CONFORT,
-    MODE_ECO,
-    MODE_HORS_GEL,
-    SOURCE_ANTICIPATION,
-    SOURCE_CALENDAR,
-    SOURCE_DEFAULT,
-    SOURCE_OVERRIDE,
-    SOURCE_PRESENCE,
-    STATE_HOME,
+    SETPOINT_TOLERANCE,
+    SOURCE_DEFAUT,
+    SOURCE_MANUEL,
+    SOURCE_OFF,
+    SOURCE_PLANNING,
+    TEMP_ECO,
+    TEMP_HORS_GEL,
 )
+from .schedule import find_slot, next_transition, resolve_temperature
+from .storage import ScheduleStore
 
 _LOGGER = logging.getLogger(__name__)
 
-# Learning constants
-LEARNING_MIN_SAMPLES = 5  # Minimum samples before using learned rate
-LEARNING_MAX_SAMPLES = 100  # Maximum samples to keep per condition
-LEARNING_RATE_MIN = 0.3  # Minimum valid heating rate °C/h
-LEARNING_RATE_MAX = 5.0  # Maximum valid heating rate °C/h
+UNUSABLE_STATES = (STATE_UNAVAILABLE, STATE_UNKNOWN)
 
 
-class HeatingRateLearner:
-    """Learn and predict heating rates based on historical data."""
-
-    def __init__(self, hass: HomeAssistant, storage_path: Path) -> None:
-        """Initialize the learner."""
-        self.hass = hass
-        self.storage_path = storage_path
-        self._data: dict[str, list[dict[str, Any]]] = {}
-        self._load_data()
-
-    def _load_data(self) -> None:
-        """Load learned data from storage."""
-        try:
-            if self.storage_path.exists():
-                with open(self.storage_path) as f:
-                    self._data = json.load(f)
-                _LOGGER.debug("Loaded heating rate data: %d rooms", len(self._data))
-        except Exception as err:
-            _LOGGER.warning("Failed to load heating rate data: %s", err)
-            self._data = {}
-
-    def _save_data(self) -> None:
-        """Save learned data to storage."""
-        try:
-            self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.storage_path, "w") as f:
-                json.dump(self._data, f)
-        except Exception as err:
-            _LOGGER.warning("Failed to save heating rate data: %s", err)
-
-    def record_observation(
-        self,
-        piece_id: str,
-        heating_rate: float,
-        outdoor_temp: float | None = None,
-        hour: int | None = None,
-    ) -> None:
-        """Record a heating rate observation."""
-        # Validate heating rate
-        if heating_rate is None or heating_rate <= LEARNING_RATE_MIN:
-            return  # Don't learn from cooling or very slow heating
-
-        if heating_rate > LEARNING_RATE_MAX:
-            return  # Ignore unrealistic values
-
-        if hour is None:
-            hour = dt_util.now().hour
-
-        observation = {
-            "rate": round(heating_rate, 3),
-            "outdoor_temp": outdoor_temp,
-            "hour": hour,
-            "timestamp": dt_util.now().isoformat(),
-        }
-
-        if piece_id not in self._data:
-            self._data[piece_id] = []
-
-        self._data[piece_id].append(observation)
-
-        # Keep only the last N samples
-        if len(self._data[piece_id]) > LEARNING_MAX_SAMPLES:
-            self._data[piece_id] = self._data[piece_id][-LEARNING_MAX_SAMPLES:]
-
-        self._save_data()
-        _LOGGER.debug(
-            "Recorded heating rate for %s: %.2f°C/h (outdoor: %s, hour: %d)",
-            piece_id,
-            heating_rate,
-            outdoor_temp,
-            hour,
-        )
-
-    def get_predicted_rate(
-        self,
-        piece_id: str,
-        outdoor_temp: float | None = None,
-        hour: int | None = None,
-    ) -> float | None:
-        """Get predicted heating rate based on learned data."""
-        if piece_id not in self._data:
-            return None
-
-        samples = self._data[piece_id]
-        if len(samples) < LEARNING_MIN_SAMPLES:
-            return None
-
-        if hour is None:
-            hour = dt_util.now().hour
-
-        # Weight samples by similarity to current conditions
-        weighted_sum = 0.0
-        weight_total = 0.0
-
-        for sample in samples:
-            weight = 1.0
-
-            # Time-of-day similarity (day vs night)
-            sample_hour = sample.get("hour", 12)
-            is_same_period = self._same_time_period(hour, sample_hour)
-            if is_same_period:
-                weight *= 1.5
-
-            # Outdoor temperature similarity
-            sample_outdoor = sample.get("outdoor_temp")
-            if outdoor_temp is not None and sample_outdoor is not None:
-                temp_diff = abs(outdoor_temp - sample_outdoor)
-                if temp_diff <= 5:
-                    weight *= 1.5
-                elif temp_diff <= 10:
-                    weight *= 1.0
-                else:
-                    weight *= 0.5
-
-            weighted_sum += sample["rate"] * weight
-            weight_total += weight
-
-        if weight_total > 0:
-            predicted = weighted_sum / weight_total
-            _LOGGER.debug(
-                "Predicted heating rate for %s: %.2f°C/h (from %d samples)",
-                piece_id,
-                predicted,
-                len(samples),
-            )
-            return predicted
-
-        return None
-
-    def _same_time_period(self, hour1: int, hour2: int) -> bool:
-        """Check if two hours are in the same time period."""
-
-        # Define periods: night (22-6), morning (6-12), afternoon (12-18), evening (18-22)
-        def get_period(h: int) -> int:
-            if 6 <= h < 12:
-                return 1
-            elif 12 <= h < 18:
-                return 2
-            elif 18 <= h < 22:
-                return 3
-            else:
-                return 0
-
-        return get_period(hour1) == get_period(hour2)
-
-    def get_stats(self, piece_id: str) -> dict[str, Any]:
-        """Get learning statistics for a room."""
-        if piece_id not in self._data:
-            return {"samples": 0, "avg_rate": None, "min_rate": None, "max_rate": None}
-
-        samples = self._data[piece_id]
-        if not samples:
-            return {"samples": 0, "avg_rate": None, "min_rate": None, "max_rate": None}
-
-        rates = [s["rate"] for s in samples]
-        return {
-            "samples": len(samples),
-            "avg_rate": round(sum(rates) / len(rates), 2),
-            "min_rate": round(min(rates), 2),
-            "max_rate": round(max(rates), 2),
-        }
+def as_entity_list(value: Any) -> list[str]:
+    """Coerce a radiator config value into a list of entity ids."""
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value]
+    return list(value)
 
 
 class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
-    """Coordinator for Chauffage Intelligent."""
+    """Resolve each room's setpoint from its schedule and push it to radiators."""
 
     def __init__(
         self,
         hass: HomeAssistant,
         config: dict[str, Any],
+        store: ScheduleStore,
         update_interval: timedelta,
     ) -> None:
         """Initialize the coordinator."""
@@ -227,497 +67,349 @@ class ChauffageIntelligentCoordinator(DataUpdateCoordinator):
             update_interval=update_interval,
         )
 
-        self.calendar_entity = config[CONF_CALENDAR]
-        self.presence_trackers = config[CONF_PRESENCE_TRACKERS]
-        self.pieces = config[CONF_PIECES]
-        self.security_factor = config[CONF_SECURITY_FACTOR]
-        self.min_preheat_time = config[CONF_MIN_PREHEAT_TIME]
-        self.derivative_window = config[CONF_DERIVATIVE_WINDOW]
+        self.pieces: dict[str, dict[str, Any]] = config[CONF_PIECES]
+        self.store = store
 
-        # Temperature history for derivative calculation
-        self._temp_history: dict[str, list[tuple[datetime, float]]] = {}
+        # Manual overrides: {piece_id: (temperature, expiry or None)}
+        self._overrides: dict[str, tuple[float, datetime | None]] = {}
 
-        # Manual mode overrides: {piece_id: (mode, expiry_datetime or None)}
-        self._mode_overrides: dict[str, tuple[str, datetime | None]] = {}
+        # Rooms switched off from the climate entity.
+        self._off_pieces: set[str] = set()
 
-        # Heating rate learner
-        storage_path = Path(hass.config.path(".storage")) / f"{DOMAIN}_learned_rates.json"
-        self._learner = HeatingRateLearner(hass, storage_path)
+        self._unsub_transition: Any = None
+        self._unsub_state: Any = None
 
-        # Track previous mode to detect heating periods
-        self._previous_modes: dict[str, str] = {}
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    @callback
+    def async_start_listeners(self) -> None:
+        """Watch radiator states so we can re-apply a setpoint immediately."""
+        entities = self.radiator_entities()
+        if not entities:
+            return
+
+        self._unsub_state = async_track_state_change_event(
+            self.hass, entities, self._handle_radiator_state_change
+        )
+
+    @callback
+    def async_shutdown_listeners(self) -> None:
+        """Cancel every listener owned by the coordinator."""
+        if self._unsub_transition is not None:
+            self._unsub_transition()
+            self._unsub_transition = None
+        if self._unsub_state is not None:
+            self._unsub_state()
+            self._unsub_state = None
+
+    def radiator_entities(self) -> list[str]:
+        """Return every radiator entity id across all rooms."""
+        entities: list[str] = []
+        for piece_config in self.pieces.values():
+            for entity_id in as_entity_list(piece_config.get(CONF_PIECE_RADIATEURS)):
+                if entity_id not in entities:
+                    entities.append(entity_id)
+        return entities
+
+    @callback
+    def _handle_radiator_state_change(self, event: Event[EventStateChangedData]) -> None:
+        """Re-apply setpoints when a radiator changes on its own."""
+        old_state = event.data.get("old_state")
+        new_state = event.data.get("new_state")
+
+        if new_state is None:
+            return
+
+        # Only react to things that matter: availability, hvac mode, setpoint.
+        if old_state is not None:
+            same_state = old_state.state == new_state.state
+            same_target = old_state.attributes.get("temperature") == new_state.attributes.get(
+                "temperature"
+            )
+            if same_state and same_target:
+                return
+
+        _LOGGER.debug("Radiator %s changed, re-applying setpoints", event.data["entity_id"])
+        self.hass.async_create_task(self.async_request_refresh())
+
+    @callback
+    def _schedule_next_transition(self, moments: list[datetime]) -> None:
+        """Arm a timer on the earliest upcoming setpoint change."""
+        if self._unsub_transition is not None:
+            self._unsub_transition()
+            self._unsub_transition = None
+
+        if not moments:
+            return
+
+        moment = min(moments)
+        self._unsub_transition = async_track_point_in_time(
+            self.hass, self._handle_transition, moment
+        )
+        _LOGGER.debug("Next schedule transition at %s", moment)
+
+    @callback
+    def _handle_transition(self, _now: datetime) -> None:
+        """Fire when a scheduled slot boundary is reached."""
+        self._unsub_transition = None
+        self.hass.async_create_task(self.async_request_refresh())
+
+    # ------------------------------------------------------------------
+    # Update loop
+    # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from sources and compute states."""
+        """Resolve and apply the setpoint of every room."""
         try:
-            # 1. Get calendar events
-            calendar_events = await self._get_calendar_events()
-            parsed_events = self._parse_calendar_events(calendar_events)
+            now = dt_util.now()
+            pieces_data: dict[str, Any] = {}
+            transitions: list[datetime] = []
 
-            # 2. Compute presence
-            maison_occupee = self._compute_presence()
-
-            # 3. Get outdoor temperature if available
-            outdoor_temp = self._get_outdoor_temperature()
-
-            # 4. Process each room
-            pieces_data = {}
             for piece_id, piece_config in self.pieces.items():
-                # Get current temperature
-                temp_actuelle = self._get_temperature(piece_config)
+                slots = self.store.get(piece_id)
 
-                # Compute heating rate (measured)
-                vitesse_mesuree = self._compute_derivative(piece_id, temp_actuelle)
+                temperature = self._get_temperature(piece_config)
+                consigne, source = self._resolve_setpoint(piece_id, piece_config, slots, now)
 
-                # Get learned rate for better predictions
-                vitesse_apprise = self._learner.get_predicted_rate(piece_id, outdoor_temp)
+                await self._apply_setpoint(piece_id, piece_config, consigne)
 
-                # Use learned rate if available and measured is None
-                vitesse = vitesse_mesuree
-                if vitesse is None and vitesse_apprise is not None:
-                    vitesse = vitesse_apprise
+                transition = next_transition(slots, now)
+                if transition is not None:
+                    transitions.append(transition)
 
-                # Resolve mode
-                mode, source = self._resolve_mode(piece_id, parsed_events, maison_occupee)
-
-                # Get target temperature
-                consigne = piece_config[CONF_PIECE_TEMPERATURES].get(mode, 19)
-
-                # Compute preheat time using best available rate
-                vitesse_pour_calcul = vitesse
-                if vitesse_pour_calcul is None and vitesse_apprise is not None:
-                    vitesse_pour_calcul = vitesse_apprise
-
-                temps_prechauffe = self.compute_preheat_time(
-                    temp_actuelle, consigne, vitesse_pour_calcul
-                )
-
-                # Find next comfort event for this room
-                prochain_evenement = self._find_next_comfort_event(piece_id, calendar_events)
-                prochain_evenement_iso = None
-                if prochain_evenement:
-                    start = prochain_evenement.get("start")
-                    if isinstance(start, str):
-                        prochain_evenement_iso = start
-                    elif isinstance(start, datetime):
-                        prochain_evenement_iso = start.isoformat()
-
-                # Check if preheating should be triggered
-                prechauffage_actif = self._check_preheat_trigger(
-                    piece_id, calendar_events, temps_prechauffe
-                )
-
-                # If preheating triggered and currently in eco, switch to comfort
-                if prechauffage_actif and mode == MODE_ECO:
-                    mode = MODE_CONFORT
-                    consigne = piece_config[CONF_PIECE_TEMPERATURES].get(MODE_CONFORT, 19)
-                    source = SOURCE_ANTICIPATION
-
-                # Learn from heating periods
-                self._learn_heating_rate(piece_id, mode, vitesse_mesuree, outdoor_temp)
-
-                # Apply temperature to radiators (supports multiple)
-                radiateurs = piece_config.get(CONF_PIECE_RADIATEURS, [])
-                # Handle legacy single radiator config
-                if isinstance(radiateurs, str):
-                    radiateurs = [radiateurs]
-                await self._set_radiators_temperature(radiateurs, consigne)
-
-                # Get learning stats
-                learning_stats = self._learner.get_stats(piece_id)
+                slot = find_slot(slots, now)
 
                 pieces_data[piece_id] = {
-                    "mode": mode,
-                    "source": source,
                     "consigne": consigne,
-                    "temperature": temp_actuelle,
-                    "vitesse_chauffe": vitesse,
-                    "vitesse_apprise": vitesse_apprise,
-                    "temps_prechauffage": temps_prechauffe,
-                    "prechauffage_actif": prechauffage_actif,
-                    "prochain_evenement": prochain_evenement_iso,
-                    "learning_samples": learning_stats["samples"],
-                    "learning_avg_rate": learning_stats["avg_rate"],
+                    "source": source,
+                    "temperature": temperature,
+                    "creneau_actuel": _describe_slot(slot),
+                    "prochain_changement": transition.isoformat() if transition else None,
+                    "offset": float(piece_config.get(CONF_PIECE_OFFSET, DEFAULT_OFFSET)),
+                    "off": piece_id in self._off_pieces,
                 }
 
-                # Update previous mode
-                self._previous_modes[piece_id] = mode
+            self._schedule_next_transition(transitions)
 
-            return {
-                "maison_occupee": maison_occupee,
-                "outdoor_temp": outdoor_temp,
-                "pieces": pieces_data,
-            }
+            return {"pieces": pieces_data}
 
         except Exception as err:
             raise UpdateFailed(f"Error updating data: {err}") from err
 
-    def _learn_heating_rate(
+    # ------------------------------------------------------------------
+    # Setpoint resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_setpoint(
         self,
         piece_id: str,
-        current_mode: str,
-        heating_rate: float | None,
-        outdoor_temp: float | None,
-    ) -> None:
-        """Learn from heating periods."""
-        # Only learn when actively heating (comfort mode)
-        if current_mode != MODE_CONFORT:
-            return
+        piece_config: dict[str, Any],
+        slots: list[dict[str, Any]],
+        now: datetime,
+    ) -> tuple[float, str]:
+        """Resolve the target temperature for a room and where it comes from."""
+        temperatures = piece_config.get(CONF_PIECE_TEMPERATURES, {})
 
-        # Only learn if we have a valid heating rate
-        if heating_rate is None or heating_rate <= 0:
-            return
+        # 1. Room switched off -> frost protection.
+        if piece_id in self._off_pieces:
+            return float(temperatures.get(TEMP_HORS_GEL, 7)), SOURCE_OFF
 
-        # Record the observation
-        self._learner.record_observation(
-            piece_id,
-            heating_rate,
-            outdoor_temp,
-        )
+        # 2. Active manual override.
+        override = self._overrides.get(piece_id)
+        if override is not None:
+            temperature, expiry = override
+            if expiry is None or now < expiry:
+                return float(temperature), SOURCE_MANUEL
+            del self._overrides[piece_id]
 
-    def _get_outdoor_temperature(self) -> float | None:
-        """Get outdoor temperature from weather entity if available."""
-        # Try common weather entity patterns
-        weather_entities = [
-            "weather.home",
-            "weather.maison",
-            "sensor.outdoor_temperature",
-            "sensor.temperature_exterieure",
-        ]
+        # 3. Scheduled slot.
+        scheduled = resolve_temperature(slots, now)
+        if scheduled is not None:
+            return scheduled, SOURCE_PLANNING
 
-        for entity_id in weather_entities:
-            state = self.hass.states.get(entity_id)
-            if state:
-                # Weather entities have temperature in attributes
-                if entity_id.startswith("weather."):
-                    temp = state.attributes.get("temperature")
-                    if temp is not None:
-                        try:
-                            return float(temp)
-                        except ValueError:
-                            pass
-                # Sensor entities have temperature in state
-                else:
-                    if state.state not in ("unknown", "unavailable"):
-                        try:
-                            return float(state.state)
-                        except ValueError:
-                            pass
-
-        return None
-
-    async def _get_calendar_events(self) -> list[dict[str, Any]]:
-        """Get current and upcoming events from the calendar."""
-        now = dt_util.now()
-        end = now + timedelta(hours=24)
-
-        try:
-            events = await self.hass.services.async_call(
-                "calendar",
-                "get_events",
-                {
-                    "entity_id": self.calendar_entity,
-                    "start_date_time": now.isoformat(),
-                    "end_date_time": end.isoformat(),
-                },
-                blocking=True,
-                return_response=True,
-            )
-            return events.get(self.calendar_entity, {}).get("events", [])
-        except Exception as err:
-            _LOGGER.warning("Failed to get calendar events: %s", err)
-            return []
-
-    def _parse_calendar_events(self, events: list[dict[str, Any]]) -> dict[str, Any]:
-        """Parse calendar events into structured format."""
-        result = {
-            "absence": False,
-            "confort_global": False,
-            "confort_pieces": set(),
-        }
-
-        now = dt_util.now()
-
-        for event in events:
-            # Check if event is currently active
-            start = event.get("start")
-            end = event.get("end")
-
-            if isinstance(start, str):
-                start = dt_util.parse_datetime(start)
-            if isinstance(end, str):
-                end = dt_util.parse_datetime(end)
-
-            if not start or not end:
-                continue
-
-            if not (start <= now <= end):
-                continue
-
-            summary = event.get("summary", "").lower().strip()
-            # Normalize separators: support "confort - salon" and "confort salon"
-            summary = summary.replace(" - ", " ")
-
-            if summary == EVENT_ABSENCE:
-                result["absence"] = True
-            elif summary == EVENT_CONFORT:
-                result["confort_global"] = True
-            elif summary.startswith(f"{EVENT_CONFORT} "):
-                piece_name = summary[len(EVENT_CONFORT) + 1 :].strip()
-                result["confort_pieces"].add(piece_name)
-
-        return result
-
-    def _compute_presence(self) -> bool:
-        """Compute if anyone is home based on device trackers."""
-        for tracker in self.presence_trackers:
-            state = self.hass.states.get(tracker)
-            if state and state.state == STATE_HOME:
-                return True
-        return False
+        # 4. Fallback: the room's eco temperature.
+        return float(temperatures.get(TEMP_ECO, 17)), SOURCE_DEFAUT
 
     def _get_temperature(self, piece_config: dict[str, Any]) -> float | None:
-        """Get temperature with fallback to radiator sensor."""
-        # Try external sensor first
+        """Get the room temperature, falling back to a radiator's own sensor."""
         sonde_entity = piece_config.get(CONF_PIECE_SONDE)
         if sonde_entity:
             state = self.hass.states.get(sonde_entity)
-            if state and state.state not in ("unknown", "unavailable"):
+            if state and state.state not in UNUSABLE_STATES:
                 try:
                     return float(state.state)
                 except ValueError:
                     pass
 
-        # Fallback to first radiator's internal sensor
-        radiateurs = piece_config.get(CONF_PIECE_RADIATEURS, [])
-        # Handle legacy single radiator config
-        if isinstance(radiateurs, str):
-            radiateurs = [radiateurs]
-
-        for radiateur_entity in radiateurs:
+        for radiateur_entity in as_entity_list(piece_config.get(CONF_PIECE_RADIATEURS)):
             state = self.hass.states.get(radiateur_entity)
-            if state:
+            if state and state.state not in UNUSABLE_STATES:
                 current_temp = state.attributes.get("current_temperature")
                 if current_temp is not None:
                     try:
                         return float(current_temp)
-                    except ValueError:
+                    except (TypeError, ValueError):
                         pass
 
         return None
 
-    def _compute_derivative(self, piece_id: str, current_temp: float | None) -> float | None:
-        """Compute heating rate in °C/h based on temperature history."""
-        if current_temp is None:
-            return None
+    # ------------------------------------------------------------------
+    # Setpoint application
+    # ------------------------------------------------------------------
 
-        now = dt_util.now()
-
-        # Initialize history for this piece if needed
-        if piece_id not in self._temp_history:
-            self._temp_history[piece_id] = []
-
-        # Add current reading
-        self._temp_history[piece_id].append((now, current_temp))
-
-        # Clean old entries (keep only last derivative_window minutes)
-        cutoff = now - timedelta(minutes=self.derivative_window)
-        self._temp_history[piece_id] = [
-            (t, temp) for t, temp in self._temp_history[piece_id] if t >= cutoff
-        ]
-
-        # Need at least 2 points to compute derivative
-        history = self._temp_history[piece_id]
-        if len(history) < 2:
-            return None
-
-        # Compute derivative from oldest to newest
-        oldest_time, oldest_temp = history[0]
-        newest_time, newest_temp = history[-1]
-
-        time_diff_hours = (newest_time - oldest_time).total_seconds() / 3600
-        if time_diff_hours <= 0:
-            return None
-
-        return (newest_temp - oldest_temp) / time_diff_hours
-
-    def _resolve_mode(
-        self,
-        piece_id: str,
-        parsed_events: dict[str, Any],
-        maison_occupee: bool,
-    ) -> tuple[str, str]:
-        """Resolve the mode for a room based on priorities."""
-        # Check for manual override first
-        if piece_id in self._mode_overrides:
-            mode, expiry = self._mode_overrides[piece_id]
-            if expiry is None or dt_util.now() < expiry:
-                return mode, SOURCE_OVERRIDE
-            else:
-                # Override expired, remove it
-                del self._mode_overrides[piece_id]
-
-        # Priority 1: Absence event → frost protection
-        if parsed_events["absence"]:
-            return MODE_HORS_GEL, SOURCE_CALENDAR
-
-        # Priority 2: Nobody home → eco mode
-        if not maison_occupee:
-            return MODE_ECO, SOURCE_PRESENCE
-
-        # Priority 3: Room-specific comfort event
-        piece_config = self.pieces.get(piece_id, {})
-        piece_name = piece_config.get(CONF_PIECE_NAME, piece_id).lower()
-
-        if piece_name in parsed_events["confort_pieces"]:
-            return MODE_CONFORT, SOURCE_CALENDAR
-
-        # Also check piece_id as fallback
-        if piece_id.lower() in parsed_events["confort_pieces"]:
-            return MODE_CONFORT, SOURCE_CALENDAR
-
-        # Priority 4: Global comfort event
-        if parsed_events["confort_global"]:
-            return MODE_CONFORT, SOURCE_CALENDAR
-
-        # Priority 5: Default to eco
-        return MODE_ECO, SOURCE_DEFAULT
-
-    def compute_preheat_time(
-        self,
-        current_temp: float | None,
-        target_temp: float,
-        heating_rate: float | None,
-    ) -> int:
-        """Compute estimated preheat time in minutes."""
-        if current_temp is None:
-            return self.min_preheat_time
-
-        delta = target_temp - current_temp
-
-        if delta <= 0:
-            return 0  # Already at temperature
-
-        # Use default heating rate if no data or room is cooling
-        effective_rate = heating_rate
-        if effective_rate is None or effective_rate <= 0:
-            effective_rate = DEFAULT_HEATING_RATE
-
-        # Calculate time in minutes
-        raw_time = (delta / effective_rate) * 60
-        time_with_margin = raw_time * self.security_factor
-
-        return max(int(time_with_margin), self.min_preheat_time)
-
-    def _check_preheat_trigger(
-        self,
-        piece_id: str,
-        calendar_events: list[dict[str, Any]],
-        preheat_time: int,
-    ) -> bool:
-        """Check if preheating should be triggered for upcoming event."""
-        now = dt_util.now()
-
-        # Find next comfort event for this piece
-        next_comfort = self._find_next_comfort_event(piece_id, calendar_events)
-
-        if not next_comfort:
-            return False
-
-        start = next_comfort.get("start")
-        if isinstance(start, str):
-            start = dt_util.parse_datetime(start)
-
-        if not start:
-            return False
-
-        # Check if event is in the future
-        if start <= now:
-            return False
-
-        minutes_until_event = (start - now).total_seconds() / 60
-
-        return minutes_until_event <= preheat_time
-
-    def _find_next_comfort_event(
-        self, piece_id: str, calendar_events: list[dict[str, Any]]
-    ) -> dict[str, Any] | None:
-        """Find the next comfort event for a specific room."""
-        now = dt_util.now()
-        piece_config = self.pieces.get(piece_id, {})
-        piece_name = piece_config.get(CONF_PIECE_NAME, piece_id).lower()
-
-        next_event = None
-        next_start = None
-
-        for event in calendar_events:
-            summary = event.get("summary", "").lower().strip()
-            # Normalize separators: support "confort - salon" and "confort salon"
-            summary = summary.replace(" - ", " ")
-
-            # Check if this is a comfort event for this room or global
-            is_relevant = (
-                summary == EVENT_CONFORT
-                or summary == f"{EVENT_CONFORT} {piece_name}"
-                or summary == f"{EVENT_CONFORT} {piece_id.lower()}"
-            )
-
-            if not is_relevant:
-                continue
-
-            start = event.get("start")
-            if isinstance(start, str):
-                start = dt_util.parse_datetime(start)
-
-            if not start or start <= now:
-                continue
-
-            if next_start is None or start < next_start:
-                next_event = event
-                next_start = start
-
-        return next_event
-
-    async def _set_radiators_temperature(
-        self, radiator_entities: list[str], temperature: float
+    async def _apply_setpoint(
+        self, piece_id: str, piece_config: dict[str, Any], consigne: float
     ) -> None:
-        """Set the target temperature on multiple radiators."""
-        for radiator_entity in radiator_entities:
-            try:
-                await self.hass.services.async_call(
-                    "climate",
-                    "set_temperature",
-                    {
-                        "entity_id": radiator_entity,
-                        "temperature": temperature,
-                    },
-                    blocking=True,
+        """Push the resolved setpoint to every radiator of a room.
+
+        The setpoint is only written when it actually differs from what the
+        radiator reports, so a value that failed to stick is retransmitted on
+        the next cycle without any dedicated retry logic.
+        """
+        offset = float(piece_config.get(CONF_PIECE_OFFSET, DEFAULT_OFFSET) or 0.0)
+
+        for entity_id in as_entity_list(piece_config.get(CONF_PIECE_RADIATEURS)):
+            state = self.hass.states.get(entity_id)
+
+            if state is None or state.state in UNUSABLE_STATES:
+                _LOGGER.warning(
+                    "Radiator %s (%s) is unavailable, skipping setpoint", entity_id, piece_id
                 )
-            except Exception as err:
-                _LOGGER.error("Failed to set temperature on %s: %s", radiator_entity, err)
+                continue
 
-    async def async_set_mode_override(
-        self, piece_id: str, mode: str, duration: int | None = None
+            target = self._clamp(consigne + offset, state.attributes)
+
+            # A radiator that is off ignores the setpoint entirely.
+            if state.state == HVACMode.OFF:
+                _LOGGER.info("Radiator %s is off, turning it back to heat", entity_id)
+                await self._call_climate("set_hvac_mode", entity_id, hvac_mode=HVACMode.HEAT)
+
+            current_target = state.attributes.get("temperature")
+            try:
+                needs_write = current_target is None or abs(float(current_target) - target) >= (
+                    SETPOINT_TOLERANCE
+                )
+            except (TypeError, ValueError):
+                needs_write = True
+
+            if not needs_write:
+                continue
+
+            _LOGGER.debug(
+                "Setting %s to %.1f°C (room target %.1f, offset %+.1f, was %s)",
+                entity_id,
+                target,
+                consigne,
+                offset,
+                current_target,
+            )
+            await self._call_climate("set_temperature", entity_id, temperature=target)
+
+    @staticmethod
+    def _clamp(target: float, attributes: dict[str, Any]) -> float:
+        """Clamp a setpoint to the radiator's advertised range."""
+        min_temp = attributes.get("min_temp")
+        max_temp = attributes.get("max_temp")
+
+        try:
+            if min_temp is not None:
+                target = max(target, float(min_temp))
+            if max_temp is not None:
+                target = min(target, float(max_temp))
+        except (TypeError, ValueError):
+            pass
+
+        return round(target, 1)
+
+    async def _call_climate(self, service: str, entity_id: str, **data: Any) -> None:
+        """Call a climate service, logging failures instead of raising."""
+        try:
+            await self.hass.services.async_call(
+                "climate",
+                service,
+                {"entity_id": entity_id, **data},
+                blocking=True,
+            )
+        except Exception as err:  # noqa: BLE001 - a failing radiator must not break the cycle
+            _LOGGER.error("climate.%s failed on %s: %s", service, entity_id, err)
+
+    # ------------------------------------------------------------------
+    # Public API (services, entities, websocket)
+    # ------------------------------------------------------------------
+
+    def get_schedule(self, piece_id: str) -> list[dict[str, Any]]:
+        """Return the stored schedule of a room."""
+        return self.store.get(piece_id)
+
+    async def async_set_schedule(
+        self, piece_id: str, slots: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Replace a room's schedule and re-apply immediately."""
+        if piece_id not in self.pieces:
+            raise ValueError(f"Unknown room: {piece_id}")
+
+        normalized = await self.store.async_set(piece_id, slots)
+        _LOGGER.info("Schedule updated for %s (%d slots)", piece_id, len(normalized))
+        await self.async_request_refresh()
+        return normalized
+
+    async def async_set_override(
+        self, piece_id: str, temperature: float, duree: int | None = None
     ) -> None:
-        """Set a manual mode override for a room."""
-        expiry = None
-        if duration:
-            expiry = dt_util.now() + timedelta(minutes=duration)
+        """Force a temperature for a room.
 
-        self._mode_overrides[piece_id] = (mode, expiry)
-        _LOGGER.info("Mode override set for %s: %s (duration: %s min)", piece_id, mode, duration)
-        await self.async_request_refresh()
+        Without an explicit duration the override lasts until the next
+        scheduled transition, which is what one expects from a thermostat: nudge
+        it now, let the planning take over at the next slot.
+        """
+        if piece_id not in self.pieces:
+            raise ValueError(f"Unknown room: {piece_id}")
 
-    async def async_reset_mode_override(self, piece_id: str | None = None) -> None:
-        """Reset mode override for a room or all rooms."""
-        if piece_id:
-            self._mode_overrides.pop(piece_id, None)
-            _LOGGER.info("Mode override reset for %s", piece_id)
+        now = dt_util.now()
+        if duree:
+            expiry = now + timedelta(minutes=duree)
         else:
-            self._mode_overrides.clear()
-            _LOGGER.info("All mode overrides reset")
+            expiry = next_transition(self.store.get(piece_id), now)
+
+        self._off_pieces.discard(piece_id)
+        self._overrides[piece_id] = (float(temperature), expiry)
+        _LOGGER.info(
+            "Override set for %s: %.1f°C until %s", piece_id, temperature, expiry or "further notice"
+        )
         await self.async_request_refresh()
 
-    def get_learner(self) -> HeatingRateLearner:
-        """Get the heating rate learner for external access."""
-        return self._learner
+    async def async_reset_override(self, piece_id: str | None = None) -> None:
+        """Return a room (or every room) to its schedule."""
+        if piece_id:
+            self._overrides.pop(piece_id, None)
+            self._off_pieces.discard(piece_id)
+        else:
+            self._overrides.clear()
+            self._off_pieces.clear()
+        await self.async_request_refresh()
+
+    async def async_set_off(self, piece_id: str, off: bool) -> None:
+        """Switch a room off (frost protection) or back to its schedule."""
+        if off:
+            self._off_pieces.add(piece_id)
+            self._overrides.pop(piece_id, None)
+        else:
+            self._off_pieces.discard(piece_id)
+        await self.async_request_refresh()
+
+    def is_off(self, piece_id: str) -> bool:
+        """Return True if the room is switched off."""
+        return piece_id in self._off_pieces
+
+    def get_override(self, piece_id: str) -> tuple[float, datetime | None] | None:
+        """Return the active override for a room, if any."""
+        return self._overrides.get(piece_id)
+
+
+def _describe_slot(slot: dict[str, Any] | None) -> str | None:
+    """Render the active slot as ``"07:00-09:00"`` for the UI."""
+    if not slot:
+        return None
+    return f"{slot['start']}-{slot['end']}"

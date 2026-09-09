@@ -7,52 +7,34 @@ from typing import Any
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
+    HVACAction,
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    CONF_PIECE_NAME,
     CONF_PIECE_RADIATEURS,
     CONF_PIECE_SONDE,
     CONF_PIECE_TEMPERATURES,
     CONF_PIECE_TYPE,
     DOMAIN,
-    MODE_AUTO,
-    MODE_CONFORT,
-    MODE_ECO,
-    MODE_HORS_GEL,
-    MODE_OFF,
-    SOURCE_OVERRIDE,
+    PRESET_PLANNING,
+    SELECT_OPTION_LABELS,
+    SOURCE_MANUEL,
+    TEMP_CONFORT,
+    TEMP_ECO,
+    TEMP_HORS_GEL,
 )
-from .coordinator import ChauffageIntelligentCoordinator
+from .coordinator import ChauffageIntelligentCoordinator, as_entity_list
+from .entity import ChauffageIntelligentEntity
 
-# Preset mode labels (French)
-PRESET_AUTO = "Automatique"
-PRESET_CONFORT = "Confort"
-PRESET_ECO = "Éco"
-PRESET_HORS_GEL = "Hors-gel"
-
-PRESET_MODES = [PRESET_AUTO, PRESET_CONFORT, PRESET_ECO, PRESET_HORS_GEL]
-
-# Mapping between preset labels and internal modes
-PRESET_TO_MODE = {
-    PRESET_AUTO: MODE_AUTO,
-    PRESET_CONFORT: MODE_CONFORT,
-    PRESET_ECO: MODE_ECO,
-    PRESET_HORS_GEL: MODE_HORS_GEL,
-}
-
-MODE_TO_PRESET = {
-    MODE_AUTO: PRESET_AUTO,
-    MODE_CONFORT: PRESET_CONFORT,
-    MODE_ECO: PRESET_ECO,
-    MODE_HORS_GEL: PRESET_HORS_GEL,
-}
+# Preset labels shown in the UI, mapped back to a palette key.
+PRESET_TO_KEY = {label: key for key, label in SELECT_OPTION_LABELS.items()}
+PRESET_MODES = list(SELECT_OPTION_LABELS.values())
+PRESET_PLANNING_LABEL = SELECT_OPTION_LABELS[PRESET_PLANNING]
 
 
 async def async_setup_entry(
@@ -63,26 +45,26 @@ async def async_setup_entry(
     """Set up climate entities from a config entry."""
     coordinator: ChauffageIntelligentCoordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-    entities = [
+    async_add_entities(
         ChauffageIntelligentClimate(coordinator, piece_id, piece_config)
         for piece_id, piece_config in coordinator.pieces.items()
-    ]
-
-    async_add_entities(entities)
+    )
 
 
-class ChauffageIntelligentClimate(
-    CoordinatorEntity[ChauffageIntelligentCoordinator], ClimateEntity
-):
-    """Climate entity for a room managed by Chauffage Intelligent."""
+class ChauffageIntelligentClimate(ChauffageIntelligentEntity, ClimateEntity):
+    """Climate entity for a room driven by its weekly schedule."""
 
-    _attr_has_entity_name = True
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
     _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.PRESET_MODE
+        | ClimateEntityFeature.TURN_ON
+        | ClimateEntityFeature.TURN_OFF
     )
     _attr_preset_modes = PRESET_MODES
+    _attr_target_temperature_step = 0.5
+    _attr_name = None  # the device name carries the room
 
     def __init__(
         self,
@@ -91,127 +73,97 @@ class ChauffageIntelligentClimate(
         piece_config: dict[str, Any],
     ) -> None:
         """Initialize the climate entity."""
-        super().__init__(coordinator)
-        self._piece_id = piece_id
-        self._piece_config = piece_config
-
+        super().__init__(coordinator, piece_id, piece_config)
         self._attr_unique_id = f"{DOMAIN}_{piece_id}"
-        self._attr_name = f"Chauffage {piece_config.get(CONF_PIECE_NAME, piece_id)}"
 
-        # Set temperature limits
         temps = piece_config.get(CONF_PIECE_TEMPERATURES, {})
-        self._attr_min_temp = temps.get(MODE_HORS_GEL, 7)
-        self._attr_max_temp = temps.get(MODE_CONFORT, 22) + 2
-
-    @property
-    def _piece_data(self) -> dict[str, Any] | None:
-        """Get current data for this room from coordinator."""
-        if self.coordinator.data is None:
-            return None
-        return self.coordinator.data.get("pieces", {}).get(self._piece_id)
+        self._attr_min_temp = min(float(temps.get(TEMP_HORS_GEL, 7)), 7.0)
+        self._attr_max_temp = max(float(temps.get(TEMP_CONFORT, 22)) + 3.0, 25.0)
 
     @property
     def current_temperature(self) -> float | None:
-        """Return the current temperature."""
-        if self._piece_data:
-            return self._piece_data.get("temperature")
-        return None
+        """Return the room temperature."""
+        return self._piece_data.get("temperature")
 
     @property
     def target_temperature(self) -> float | None:
-        """Return the target temperature."""
-        if self._piece_data:
-            return self._piece_data.get("consigne")
-        return None
+        """Return the resolved setpoint."""
+        return self._piece_data.get("consigne")
 
     @property
     def hvac_mode(self) -> HVACMode:
-        """Return current HVAC mode."""
-        if self._piece_data:
-            mode = self._piece_data.get("mode")
-            if mode == MODE_OFF:
-                return HVACMode.OFF
-        return HVACMode.HEAT
+        """Return HEAT unless the room was switched off."""
+        return HVACMode.OFF if self._piece_data.get("off") else HVACMode.HEAT
 
     @property
-    def preset_mode(self) -> str | None:
-        """Return current preset mode."""
-        if self._piece_data is None:
-            return PRESET_AUTO
+    def hvac_action(self) -> HVACAction | None:
+        """Report whether the room is currently calling for heat."""
+        if self._piece_data.get("off"):
+            return HVACAction.OFF
 
-        source = self._piece_data.get("source")
-        if source == SOURCE_OVERRIDE:
-            current_mode = self._piece_data.get("mode")
-            if current_mode and current_mode in MODE_TO_PRESET:
-                return MODE_TO_PRESET[current_mode]
+        current = self._piece_data.get("temperature")
+        target = self._piece_data.get("consigne")
+        if current is None or target is None:
+            return None
 
-        return PRESET_AUTO
+        return HVACAction.HEATING if current < target else HVACAction.IDLE
+
+    @property
+    def preset_mode(self) -> str:
+        """Return the palette preset matching the active override, else Planning."""
+        if self._piece_data.get("source") != SOURCE_MANUEL:
+            return PRESET_PLANNING_LABEL
+
+        consigne = self._piece_data.get("consigne")
+        temps = self._piece_config.get(CONF_PIECE_TEMPERATURES, {})
+        for key in (TEMP_CONFORT, TEMP_ECO, TEMP_HORS_GEL):
+            if key in temps and consigne is not None and abs(float(temps[key]) - consigne) < 0.05:
+                return SELECT_OPTION_LABELS[key]
+
+        # A free temperature was forced: no preset matches it.
+        return PRESET_PLANNING_LABEL
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return extra state attributes."""
-        # Handle both new list format and legacy single radiator format
-        radiateurs = self._piece_config.get(CONF_PIECE_RADIATEURS, [])
-        if isinstance(radiateurs, str):
-            radiateurs = [radiateurs]
-
-        attrs = {
-            "radiateur_entities": radiateurs,
+        """Return diagnostics about how the setpoint was chosen."""
+        data = self._piece_data
+        return {
+            "source_consigne": data.get("source"),
+            "creneau_actuel": data.get("creneau_actuel"),
+            "prochain_changement": data.get("prochain_changement"),
+            "offset": data.get("offset"),
+            "radiateur_entities": as_entity_list(self._piece_config.get(CONF_PIECE_RADIATEURS)),
             "sonde_entity": self._piece_config.get(CONF_PIECE_SONDE),
             "type_piece": self._piece_config.get(CONF_PIECE_TYPE),
         }
 
-        if self._piece_data:
-            attrs.update(
-                {
-                    "mode_calcule": self._piece_data.get("mode"),
-                    "source_mode": self._piece_data.get("source"),
-                    "temperature_cible": self._piece_data.get("consigne"),
-                    "temperature_actuelle": self._piece_data.get("temperature"),
-                    "vitesse_chauffe": self._piece_data.get("vitesse_chauffe"),
-                    "vitesse_apprise": self._piece_data.get("vitesse_apprise"),
-                    "temps_prechauffage": self._piece_data.get("temps_prechauffage"),
-                    "prechauffage_actif": self._piece_data.get("prechauffage_actif"),
-                    "prochain_evenement": self._piece_data.get("prochain_evenement"),
-                    "learning_samples": self._piece_data.get("learning_samples"),
-                    "learning_avg_rate": self._piece_data.get("learning_avg_rate"),
-                }
-            )
-
-        return attrs
-
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Set new target temperature (manual override)."""
+        """Force a temperature until the next scheduled transition."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
 
-        # Determine which mode this temperature corresponds to
-        temps = self._piece_config.get(CONF_PIECE_TEMPERATURES, {})
-
-        if temperature >= temps.get(MODE_CONFORT, 19):
-            mode = MODE_CONFORT
-        elif temperature >= temps.get(MODE_ECO, 17):
-            mode = MODE_ECO
-        else:
-            mode = MODE_HORS_GEL
-
-        # Set override
-        await self.coordinator.async_set_mode_override(self._piece_id, mode)
+        await self.coordinator.async_set_override(self._piece_id, float(temperature))
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """Set HVAC mode."""
-        if hvac_mode == HVACMode.OFF:
-            await self.coordinator.async_set_mode_override(self._piece_id, MODE_OFF)
-        else:
-            # Clear override to return to calculated mode
-            await self.coordinator.async_reset_mode_override(self._piece_id)
+        """Switch the room off (frost protection) or back to its schedule."""
+        await self.coordinator.async_set_off(self._piece_id, hvac_mode == HVACMode.OFF)
+
+    async def async_turn_on(self) -> None:
+        """Return the room to its schedule."""
+        await self.coordinator.async_set_off(self._piece_id, False)
+
+    async def async_turn_off(self) -> None:
+        """Switch the room to frost protection."""
+        await self.coordinator.async_set_off(self._piece_id, True)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """Set preset mode."""
-        mode = PRESET_TO_MODE.get(preset_mode)
+        """Apply a palette preset, or hand control back to the schedule."""
+        key = PRESET_TO_KEY.get(preset_mode)
 
-        if mode == MODE_AUTO:
-            await self.coordinator.async_reset_mode_override(self._piece_id)
-        elif mode:
-            await self.coordinator.async_set_mode_override(self._piece_id, mode)
+        if key is None or key == PRESET_PLANNING:
+            await self.coordinator.async_reset_override(self._piece_id)
+            return
+
+        temps = self._piece_config.get(CONF_PIECE_TEMPERATURES, {})
+        await self.coordinator.async_set_override(self._piece_id, float(temps.get(key, 19)))

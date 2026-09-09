@@ -1,8 +1,8 @@
 {
   "name": "Chauffage Intelligent",
   "render_readme": true,
-  "domains": ["climate", "sensor", "binary_sensor"],
+  "domains": ["climate", "sensor", "select"],
   "country": ["FR"],
-  "homeassistant": "2024.1.0",
+  "homeassistant": "2024.11.0",
   "iot_class": "local_polling"
 }
