@@ -1,4 +1,4 @@
-"""Tests for select entities."""
+"""Tests for the mode select entity."""
 
 from __future__ import annotations
 
@@ -7,202 +7,107 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.chauffage_intelligent.const import (
-    CONF_PIECE_NAME,
     DOMAIN,
-    MODE_AUTO,
-    MODE_CONFORT,
-    MODE_ECO,
-    MODE_HORS_GEL,
-    SOURCE_OVERRIDE,
+    SOURCE_DEFAUT,
+    SOURCE_MANUEL,
+    SOURCE_PLANNING,
 )
 from custom_components.chauffage_intelligent.select import (
     ChauffageIntelligentModeSelect,
-    _label_to_mode,
+    async_setup_entry,
 )
 
 
-class TestChauffageIntelligentModeSelect:
-    """Test ChauffageIntelligentModeSelect."""
-
-    def test_initialization(self, coordinator):
-        """Test select entity initialization."""
-        piece_config = {CONF_PIECE_NAME: "Bureau"}
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", piece_config)
-
-        assert select._attr_unique_id == f"{DOMAIN}_bureau_mode_select"
-        assert select._attr_name == "Bureau Mode"
-        assert select._piece_id == "bureau"
-        assert select._piece_name == "Bureau"
-
-    def test_initialization_without_name(self, coordinator):
-        """Test select entity initialization without piece name falls back to id."""
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select._attr_name == "bureau Mode"
-        assert select._piece_name == "bureau"
-
-    def test_options_are_french_labels(self, coordinator):
-        """Test that options are French labels."""
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        expected_options = ["Automatique", "Confort", "Éco", "Hors-gel"]
-        assert select._attr_options == expected_options
-
-    def test_current_option_returns_auto_when_no_data(self, coordinator):
-        """Test current_option returns Automatique when no data."""
-        coordinator.data = None
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.current_option == "Automatique"
-
-    def test_current_option_returns_auto_when_piece_not_found(self, coordinator):
-        """Test current_option returns Automatique when piece not found."""
-        coordinator.data = {"pieces": {}}
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.current_option == "Automatique"
-
-    def test_current_option_returns_auto_when_source_not_override(self, coordinator):
-        """Test current_option returns Automatique when source is not override."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "confort", "source": "calendrier"}}}
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.current_option == "Automatique"
-
-    def test_current_option_returns_mode_label_when_override(self, coordinator):
-        """Test current_option returns correct label when mode is overridden."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "confort", "source": SOURCE_OVERRIDE}}}
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.current_option == "Confort"
-
-    def test_current_option_returns_eco_label_when_override(self, coordinator):
-        """Test current_option returns Éco label when eco mode is overridden."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "eco", "source": SOURCE_OVERRIDE}}}
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.current_option == "Éco"
-
-    def test_current_option_returns_hors_gel_label_when_override(self, coordinator):
-        """Test current_option returns Hors-gel label when hors_gel mode is overridden."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "hors_gel", "source": SOURCE_OVERRIDE}}}
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.current_option == "Hors-gel"
-
-    def test_current_option_returns_auto_for_unknown_mode_in_override(self, coordinator):
-        """Test current_option returns Automatique for unknown mode even when overridden."""
-        coordinator.data = {
-            "pieces": {"bureau": {"mode": "unknown_mode", "source": SOURCE_OVERRIDE}}
-        }
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.current_option == "Automatique"
-
-    @pytest.mark.asyncio
-    async def test_async_select_option_auto_resets_override(self, coordinator):
-        """Test selecting Automatique resets the mode override."""
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        # Mock the coordinator methods
-        coordinator.async_reset_mode_override = AsyncMock()
-        coordinator.async_request_refresh = AsyncMock()
-
-        await select.async_select_option("Automatique")
-
-        coordinator.async_reset_mode_override.assert_called_once_with("bureau")
-        coordinator.async_request_refresh.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_async_select_option_confort_sets_override(self, coordinator):
-        """Test selecting Confort sets the mode override."""
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        # Mock the coordinator methods
-        coordinator.async_set_mode_override = AsyncMock()
-        coordinator.async_request_refresh = AsyncMock()
-
-        await select.async_select_option("Confort")
-
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", "confort")
-        coordinator.async_request_refresh.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_async_select_option_eco_sets_override(self, coordinator):
-        """Test selecting Éco sets the mode override."""
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        # Mock the coordinator methods
-        coordinator.async_set_mode_override = AsyncMock()
-        coordinator.async_request_refresh = AsyncMock()
-
-        await select.async_select_option("Éco")
-
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", "eco")
-        coordinator.async_request_refresh.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_async_select_option_hors_gel_sets_override(self, coordinator):
-        """Test selecting Hors-gel sets the mode override."""
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        # Mock the coordinator methods
-        coordinator.async_set_mode_override = AsyncMock()
-        coordinator.async_request_refresh = AsyncMock()
-
-        await select.async_select_option("Hors-gel")
-
-        coordinator.async_set_mode_override.assert_called_once_with("bureau", "hors_gel")
-        coordinator.async_request_refresh.assert_called_once()
-
-    def test_extra_state_attributes_returns_empty_when_no_data(self, coordinator):
-        """Test extra_state_attributes returns empty dict when no data."""
-        coordinator.data = None
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.extra_state_attributes == {}
-
-    def test_extra_state_attributes_returns_empty_when_piece_not_found(self, coordinator):
-        """Test extra_state_attributes returns empty dict when piece not found."""
-        coordinator.data = {"pieces": {}}
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.extra_state_attributes == {}
-
-    def test_extra_state_attributes_returns_calculated_mode_and_source(self, coordinator):
-        """Test extra_state_attributes returns calculated_mode and source."""
-        coordinator.data = {"pieces": {"bureau": {"mode": "confort", "source": "calendrier"}}}
-        select = ChauffageIntelligentModeSelect(coordinator, "bureau", {})
-
-        assert select.extra_state_attributes == {
-            "calculated_mode": "confort",
-            "source": "calendrier",
-        }
+@pytest.fixture
+def entity(coordinator):
+    """A mode select for the office."""
+    return ChauffageIntelligentModeSelect(coordinator, "bureau", coordinator.pieces["bureau"])
 
 
-class TestLabelToMode:
-    """Test _label_to_mode helper function."""
+def set_data(coordinator, **overrides):
+    """Publish coordinator data for the office."""
+    payload = {"consigne": 19.0, "source": SOURCE_PLANNING}
+    payload.update(overrides)
+    coordinator.data = {"pieces": {"bureau": payload}}
 
-    def test_automatique_returns_auto(self):
-        """Test Automatique label returns auto mode."""
-        assert _label_to_mode("Automatique") == MODE_AUTO
 
-    def test_confort_returns_confort(self):
-        """Test Confort label returns confort mode."""
-        assert _label_to_mode("Confort") == MODE_CONFORT
+def test_options(entity):
+    """The four options mirror the climate presets."""
+    assert entity.options == ["Planning", "Confort", "Éco", "Hors-gel"]
+    assert entity.unique_id == f"{DOMAIN}_bureau_mode_select"
 
-    def test_eco_returns_eco(self):
-        """Test Éco label returns eco mode."""
-        assert _label_to_mode("Éco") == MODE_ECO
 
-    def test_hors_gel_returns_hors_gel(self):
-        """Test Hors-gel label returns hors_gel mode."""
-        assert _label_to_mode("Hors-gel") == MODE_HORS_GEL
+def test_defaults_to_planning(entity, coordinator):
+    """Without an override the select sits on Planning."""
+    set_data(coordinator, source=SOURCE_PLANNING)
+    assert entity.current_option == "Planning"
 
-    def test_unknown_label_returns_auto(self):
-        """Test unknown label returns auto mode as fallback."""
-        assert _label_to_mode("Unknown") == MODE_AUTO
+    set_data(coordinator, source=SOURCE_DEFAUT)
+    assert entity.current_option == "Planning"
 
-    def test_empty_label_returns_auto(self):
-        """Test empty label returns auto mode as fallback."""
-        assert _label_to_mode("") == MODE_AUTO
+
+def test_without_data(entity, coordinator):
+    """Before the first refresh the select still reports Planning."""
+    coordinator.data = None
+    assert entity.current_option == "Planning"
+
+
+@pytest.mark.parametrize(
+    ("consigne", "expected"), [(19.0, "Confort"), (17.0, "Éco"), (7.0, "Hors-gel")]
+)
+def test_reflects_the_active_override(entity, coordinator, consigne, expected):
+    """An override on a palette value selects that option."""
+    set_data(coordinator, source=SOURCE_MANUEL, consigne=consigne)
+    assert entity.current_option == expected
+
+
+def test_free_temperature_falls_back_to_planning(entity, coordinator):
+    """An off-palette override matches no option."""
+    set_data(coordinator, source=SOURCE_MANUEL, consigne=21.5)
+    assert entity.current_option == "Planning"
+
+
+def test_attributes(entity, coordinator):
+    """The setpoint and its source are exposed."""
+    set_data(coordinator)
+    assert entity.extra_state_attributes == {"consigne": 19.0, "source": SOURCE_PLANNING}
+
+
+async def test_selecting_planning_clears_the_override(entity, coordinator):
+    """Planning returns control to the schedule."""
+    coordinator.async_reset_override = AsyncMock()
+
+    await entity.async_select_option("Planning")
+
+    coordinator.async_reset_override.assert_awaited_once_with("bureau")
+
+
+@pytest.mark.parametrize(
+    ("option", "expected"), [("Confort", 19.0), ("Éco", 17.0), ("Hors-gel", 7.0)]
+)
+async def test_selecting_a_palette_option(entity, coordinator, option, expected):
+    """A palette option forces the matching temperature."""
+    coordinator.async_set_override = AsyncMock()
+
+    await entity.async_select_option(option)
+
+    coordinator.async_set_override.assert_awaited_once_with("bureau", expected)
+
+
+async def test_unknown_option_falls_back_to_planning(entity, coordinator):
+    """An unexpected label is treated as Planning rather than crashing."""
+    coordinator.async_reset_override = AsyncMock()
+
+    await entity.async_select_option("Vacances")
+
+    coordinator.async_reset_override.assert_awaited_once_with("bureau")
+
+
+async def test_setup_entry_creates_one_select_per_room(hass_with_coordinator):
+    """Every room gets a select."""
+    hass, entry, _ = hass_with_coordinator
+    added = []
+
+    await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+    assert {entity._piece_id for entity in added} == {"bureau", "salon"}

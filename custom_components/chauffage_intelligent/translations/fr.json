@@ -2,125 +2,141 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configurer Chauffage Intelligent",
-        "description": "Configurez l'intégration de chauffage intelligent",
+        "title": "Chauffage Intelligent",
+        "description": "Réglages généraux. Les plannings s'éditent ensuite depuis le panneau Chauffage de la barre latérale.",
         "data": {
-          "calendar": "Calendrier Google",
-          "presence_trackers": "Détecteurs de présence",
-          "update_interval": "Intervalle de mise à jour (minutes)",
-          "security_factor": "Facteur de sécurité préchauffage",
-          "min_preheat_time": "Temps minimum de préchauffage (minutes)"
+          "update_interval": "Intervalle de vérification"
+        },
+        "data_description": {
+          "update_interval": "Filet de sécurité : les changements de créneau sont appliqués à l'heure pile, indépendamment de cet intervalle."
         }
       },
       "room_menu": {
-        "title": "Configuration des pièces",
-        "description": "Pièces configurées : {num_rooms}",
+        "title": "Pièces",
+        "description": "{num_rooms} pièce(s) configurée(s).",
         "data": {
-          "action": "Sélectionnez une action"
+          "action": "Action"
         }
       },
       "select_area": {
-        "title": "Sélectionner une pièce",
-        "description": "Choisissez une pièce à configurer pour le chauffage intelligent",
+        "title": "Choisir une zone",
+        "description": "Sélectionnez la zone correspondant à la pièce à chauffer.",
         "data": {
-          "area": "Pièce"
+          "area": "Zone"
         }
       },
       "configure_room": {
-        "title": "Configurer la pièce : {area_name}",
-        "description": "Configurez les paramètres de chauffage pour cette pièce",
+        "title": "Configurer {area_name}",
+        "description": "Radiateurs, sonde et palette de températures pour cette pièce.",
         "data": {
           "type": "Type de pièce",
-          "radiateurs": "Radiateurs (entités climate)",
-          "sonde": "Sonde de température (optionnel)",
-          "temp_confort": "Température confort",
-          "temp_eco": "Température éco",
-          "temp_hors_gel": "Température hors-gel"
+          "radiateurs": "Radiateurs",
+          "sonde": "Sonde de température",
+          "temp_confort": "Confort",
+          "temp_eco": "Éco",
+          "temp_hors_gel": "Hors-gel",
+          "offset": "Décalage de consigne"
+        },
+        "data_description": {
+          "sonde": "Si aucune sonde n'est choisie, la sonde interne du radiateur est utilisée.",
+          "temp_confort": "Palette réutilisée par le panneau et les presets. Ne définit aucun horaire.",
+          "offset": "Ajouté à la consigne envoyée au radiateur. À utiliser si le radiateur régule au-dessus ou en dessous de la température réelle de la pièce."
         }
       }
     },
     "error": {
-      "no_calendar": "Aucun calendrier trouvé",
-      "no_trackers": "Aucun détecteur de présence trouvé",
-      "no_rooms": "Vous devez ajouter au moins une pièce",
-      "no_areas_available": "Aucune pièce avec des entités climate disponible",
-      "area_already_configured": "Cette pièce est déjà configurée",
-      "invalid_entity": "Entité invalide sélectionnée"
+      "no_rooms": "Ajoutez au moins une pièce avant de terminer.",
+      "area_already_configured": "Cette zone est déjà configurée.",
+      "no_areas_available": "Aucune zone avec une entité climate n'a été trouvée."
     },
     "abort": {
-      "already_configured": "Déjà configuré"
+      "already_configured": "Cette intégration est déjà configurée."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Options Chauffage Intelligent",
+        "title": "Chauffage Intelligent",
+        "description": "Les plannings s'éditent depuis le panneau Chauffage de la barre latérale.",
         "data": {
-          "action": "Sélectionnez une action"
+          "action": "Action"
         }
       },
       "select_area": {
-        "title": "Sélectionner une pièce",
-        "description": "Choisissez une pièce à ajouter",
+        "title": "Ajouter une pièce",
         "data": {
-          "area": "Pièce"
+          "area": "Zone"
         }
       },
       "add_room": {
-        "title": "Configurer la pièce : {area_name}",
+        "title": "Configurer {area_name}",
         "data": {
           "type": "Type de pièce",
-          "radiateurs": "Radiateurs (entités climate)",
-          "sonde": "Sonde de température (optionnel)",
-          "temp_confort": "Température confort",
-          "temp_eco": "Température éco",
-          "temp_hors_gel": "Température hors-gel"
+          "radiateurs": "Radiateurs",
+          "sonde": "Sonde de température",
+          "temp_confort": "Confort",
+          "temp_eco": "Éco",
+          "temp_hors_gel": "Hors-gel",
+          "offset": "Décalage de consigne"
         }
       },
       "select_room": {
-        "title": "Sélectionner une pièce",
+        "title": "Modifier une pièce",
         "data": {
-          "room": "Pièce à modifier"
+          "room": "Pièce"
         }
       },
       "modify_room": {
-        "title": "Modifier la pièce : {room_name}",
+        "title": "Modifier {room_name}",
         "data": {
           "type": "Type de pièce",
-          "radiateurs": "Radiateurs (entités climate)",
-          "sonde": "Sonde de température (optionnel)",
-          "temp_confort": "Température confort",
-          "temp_eco": "Température éco",
-          "temp_hors_gel": "Température hors-gel"
+          "radiateurs": "Radiateurs",
+          "sonde": "Sonde de température",
+          "temp_confort": "Confort",
+          "temp_eco": "Éco",
+          "temp_hors_gel": "Hors-gel",
+          "offset": "Décalage de consigne"
         }
       },
       "delete_room": {
         "title": "Supprimer une pièce",
-        "description": "Attention : Cette action est irréversible.",
+        "description": "Le planning de la pièce est supprimé en même temps.",
         "data": {
-          "room": "Pièce à supprimer",
+          "room": "Pièce",
           "confirm": "Confirmer la suppression"
         }
       },
       "settings": {
-        "title": "Paramètres globaux",
+        "title": "Paramètres",
         "data": {
-          "calendar": "Calendrier Google",
-          "presence_trackers": "Détecteurs de présence",
-          "update_interval": "Intervalle de mise à jour (minutes)",
-          "security_factor": "Facteur de sécurité préchauffage",
-          "min_preheat_time": "Temps minimum de préchauffage (minutes)"
+          "update_interval": "Intervalle de vérification"
         }
       }
     },
-    "error": {
-      "room_exists": "Une pièce avec cet identifiant existe déjà",
-      "area_already_configured": "Cette pièce est déjà configurée",
-      "no_areas_available": "Aucune pièce avec des entités climate disponible"
-    },
     "abort": {
-      "no_rooms": "Aucune pièce configurée",
-      "no_areas_available": "Aucune pièce avec des entités climate disponible"
+      "no_rooms": "Aucune pièce configurée.",
+      "no_areas_available": "Aucune zone disponible."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature_cible": {
+        "name": "Température cible"
+      },
+      "source_consigne": {
+        "name": "Source consigne",
+        "state": {
+          "planning": "Planning",
+          "manuel": "Manuel",
+          "defaut": "Hors plage",
+          "off": "Éteint"
+        }
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode"
+      }
     }
   }
 }

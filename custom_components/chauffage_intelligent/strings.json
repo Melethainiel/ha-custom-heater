@@ -2,125 +2,137 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configure Chauffage Intelligent",
-        "description": "Set up the intelligent heating integration",
+        "title": "Chauffage Intelligent",
+        "description": "General settings. Schedules are edited afterwards from the Chauffage panel in the sidebar.",
         "data": {
-          "calendar": "Google Calendar",
-          "presence_trackers": "Presence device trackers",
-          "update_interval": "Update interval (minutes)",
-          "security_factor": "Preheat security factor",
-          "min_preheat_time": "Minimum preheat time (minutes)"
+          "update_interval": "Check interval"
+        },
+        "data_description": {
+          "update_interval": "Safety net only: slot changes are applied on the minute, independently of this interval."
         }
       },
       "room_menu": {
-        "title": "Room configuration",
-        "description": "Rooms configured: {num_rooms}",
+        "title": "Rooms",
+        "description": "{num_rooms} room(s) configured.",
         "data": {
-          "action": "Select an action"
+          "action": "Action"
         }
       },
       "select_area": {
-        "title": "Select a room",
-        "description": "Choose a room to configure for intelligent heating",
+        "title": "Select an area",
+        "description": "Pick the area matching the room to heat.",
         "data": {
-          "area": "Room"
+          "area": "Area"
         }
       },
       "configure_room": {
-        "title": "Configure room: {area_name}",
-        "description": "Configure heating settings for this room",
+        "title": "Configure {area_name}",
+        "description": "Radiators, sensor and temperature palette for this room.",
         "data": {
           "type": "Room type",
-          "radiateurs": "Radiators (climate entities)",
-          "sonde": "Temperature sensor (optional)",
-          "temp_confort": "Comfort temperature",
-          "temp_eco": "Eco temperature",
-          "temp_hors_gel": "Frost protection temperature"
+          "radiateurs": "Radiators",
+          "sonde": "Temperature sensor",
+          "temp_confort": "Comfort",
+          "temp_eco": "Eco",
+          "temp_hors_gel": "Frost protection",
+          "offset": "Setpoint offset"
+        },
+        "data_description": {
+          "sonde": "When no sensor is selected, the radiator's built-in sensor is used.",
+          "temp_confort": "Palette reused by the panel and the presets. It does not define any schedule.",
+          "offset": "Added to the setpoint sent to the radiator. Use it when the radiator regulates above or below the room's real temperature."
         }
       }
     },
     "error": {
-      "no_calendar": "No calendar entity found",
-      "no_trackers": "No device trackers found",
-      "no_rooms": "You must add at least one room",
-      "no_areas_available": "No rooms with climate entities available",
-      "area_already_configured": "This room is already configured",
-      "invalid_entity": "Invalid entity selected"
+      "no_rooms": "Add at least one room before finishing.",
+      "area_already_configured": "This area is already configured.",
+      "no_areas_available": "No area with a climate entity was found."
     },
     "abort": {
-      "already_configured": "Already configured"
+      "already_configured": "This integration is already configured."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Chauffage Intelligent Options",
+        "title": "Chauffage Intelligent",
+        "description": "Schedules are edited from the Chauffage panel in the sidebar.",
         "data": {
-          "action": "Select an action"
+          "action": "Action"
         }
       },
       "select_area": {
-        "title": "Select a room",
-        "description": "Choose a room to add",
+        "title": "Add a room",
         "data": {
-          "area": "Room"
+          "area": "Area"
         }
       },
       "add_room": {
-        "title": "Configure room: {area_name}",
+        "title": "Configure {area_name}",
         "data": {
           "type": "Room type",
-          "radiateurs": "Radiators (climate entities)",
-          "sonde": "Temperature sensor (optional)",
-          "temp_confort": "Comfort temperature",
-          "temp_eco": "Eco temperature",
-          "temp_hors_gel": "Frost protection temperature"
+          "radiateurs": "Radiators",
+          "sonde": "Temperature sensor",
+          "temp_confort": "Comfort",
+          "temp_eco": "Eco",
+          "temp_hors_gel": "Frost protection",
+          "offset": "Setpoint offset"
         }
       },
       "select_room": {
-        "title": "Select a room",
+        "title": "Modify a room",
         "data": {
-          "room": "Room to modify"
+          "room": "Room"
         }
       },
       "modify_room": {
-        "title": "Modify room: {room_name}",
+        "title": "Modify {room_name}",
         "data": {
           "type": "Room type",
-          "radiateurs": "Radiators (climate entities)",
-          "sonde": "Temperature sensor (optional)",
-          "temp_confort": "Comfort temperature",
-          "temp_eco": "Eco temperature",
-          "temp_hors_gel": "Frost protection temperature"
+          "radiateurs": "Radiators",
+          "sonde": "Temperature sensor",
+          "temp_confort": "Comfort",
+          "temp_eco": "Eco",
+          "temp_hors_gel": "Frost protection",
+          "offset": "Setpoint offset"
         }
       },
       "delete_room": {
         "title": "Delete a room",
-        "description": "Warning: This action cannot be undone.",
+        "description": "The room's schedule is deleted along with it.",
         "data": {
-          "room": "Room to delete",
+          "room": "Room",
           "confirm": "Confirm deletion"
         }
       },
       "settings": {
-        "title": "Global settings",
+        "title": "Settings",
         "data": {
-          "calendar": "Google Calendar",
-          "presence_trackers": "Presence device trackers",
-          "update_interval": "Update interval (minutes)",
-          "security_factor": "Preheat security factor",
-          "min_preheat_time": "Minimum preheat time (minutes)"
+          "update_interval": "Check interval"
         }
       }
     },
-    "error": {
-      "room_exists": "A room with this ID already exists",
-      "area_already_configured": "This room is already configured",
-      "no_areas_available": "No rooms with climate entities available"
-    },
     "abort": {
-      "no_rooms": "No rooms configured",
-      "no_areas_available": "No rooms with climate entities available"
+      "no_rooms": "No room configured.",
+      "no_areas_available": "No area available."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature_cible": { "name": "Target temperature" },
+      "source_consigne": {
+        "name": "Setpoint source",
+        "state": {
+          "planning": "Schedule",
+          "manuel": "Manual",
+          "defaut": "Outside schedule",
+          "off": "Off"
+        }
+      }
+    },
+    "select": {
+      "mode": { "name": "Mode" }
     }
   }
 }

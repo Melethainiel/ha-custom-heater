@@ -1,8 +1,8 @@
 [project]
 name = "chauffage-intelligent"
-version = "1.0.0"
+version = "2.0.0"
 description = "Home Assistant custom component for intelligent heating management"
-readme = "SPEC.md"
+readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 
@@ -11,7 +11,7 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
-    "homeassistant>=2024.1.0",
+    "homeassistant>=2024.11.0",
 ]
 
 [tool.pytest.ini_options]

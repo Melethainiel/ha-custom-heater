@@ -1,29 +1,30 @@
-set_mode:
-  name: Set Mode
-  description: Force a mode for a room (temporary override)
+set_temperature:
+  name: Forcer une température
+  description: >-
+    Force une température pour une pièce. Sans durée, la surcharge dure jusqu'au
+    prochain changement de créneau du planning.
   fields:
     piece:
-      name: Room
-      description: The room ID to set the mode for
+      name: Pièce
+      description: Identifiant de la pièce
       required: true
       example: "bureau"
       selector:
         text:
-    mode:
-      name: Mode
-      description: The mode to set
+    temperature:
+      name: Température
+      description: Consigne à appliquer
       required: true
-      example: "confort"
+      example: 20
       selector:
-        select:
-          options:
-            - "confort"
-            - "eco"
-            - "hors_gel"
-            - "off"
+        number:
+          min: 5
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
     duree:
-      name: Duration
-      description: Duration in minutes (optional, defaults to until next calendar change)
+      name: Durée
+      description: Durée en minutes (par défaut jusqu'au prochain créneau)
       required: false
       example: 120
       selector:
@@ -32,18 +33,45 @@ set_mode:
           max: 1440
           unit_of_measurement: minutes
 
-reset_mode:
-  name: Reset Mode
-  description: Cancel the override and return to calculated mode
+reset:
+  name: Revenir au planning
+  description: Annule la surcharge manuelle et rend la main au planning.
   fields:
     piece:
-      name: Room
-      description: The room ID to reset (optional, resets all rooms if omitted)
+      name: Pièce
+      description: Identifiant de la pièce (toutes les pièces si omis)
       required: false
       example: "bureau"
       selector:
         text:
 
 refresh:
-  name: Refresh
-  description: Force an immediate recalculation of all modes
+  name: Recalculer
+  description: Force un recalcul et une réapplication immédiate des consignes.
+
+set_schedule:
+  name: Définir le planning
+  description: >-
+    Remplace le planning hebdomadaire d'une pièce. Utile pour les automatisations
+    et les sauvegardes ; l'édition courante se fait depuis le panneau Chauffage.
+  fields:
+    piece:
+      name: Pièce
+      description: Identifiant de la pièce
+      required: true
+      example: "bureau"
+      selector:
+        text:
+    slots:
+      name: Créneaux
+      description: >-
+        Liste de créneaux {day, start, end, temperature}. day va de 0 (lundi)
+        à 6 (dimanche).
+      required: true
+      example: |
+        - day: 0
+          start: "07:00"
+          end: "09:00"
+          temperature: 20
+      selector:
+        object:

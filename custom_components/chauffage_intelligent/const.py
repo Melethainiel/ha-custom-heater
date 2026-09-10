@@ -2,24 +2,30 @@
 
 DOMAIN = "chauffage_intelligent"
 
-# Modes
-MODE_CONFORT = "confort"
-MODE_ECO = "eco"
-MODE_HORS_GEL = "hors_gel"
-MODE_OFF = "off"
-MODE_AUTO = "auto"
+# Named temperatures (palette). These are labels for temperature presets,
+# they no longer drive any scheduling logic.
+TEMP_CONFORT = "confort"
+TEMP_ECO = "eco"
+TEMP_HORS_GEL = "hors_gel"
 
-MODES = [MODE_CONFORT, MODE_ECO, MODE_HORS_GEL, MODE_OFF]
+TEMP_KEYS = [TEMP_CONFORT, TEMP_ECO, TEMP_HORS_GEL]
 
-# Select entity options (for mode override selector)
-SELECT_OPTIONS = [MODE_AUTO, MODE_CONFORT, MODE_ECO, MODE_HORS_GEL]
+# Setpoint source (exposed as an attribute / sensor)
+SOURCE_PLANNING = "planning"
+SOURCE_MANUEL = "manuel"
+SOURCE_DEFAUT = "defaut"
+SOURCE_OFF = "off"
 
-# Labels for select entity (French)
+# Preset / select options
+PRESET_PLANNING = "planning"
+
+SELECT_OPTIONS = [PRESET_PLANNING, TEMP_CONFORT, TEMP_ECO, TEMP_HORS_GEL]
+
 SELECT_OPTION_LABELS = {
-    MODE_AUTO: "Automatique",
-    MODE_CONFORT: "Confort",
-    MODE_ECO: "Éco",
-    MODE_HORS_GEL: "Hors-gel",
+    PRESET_PLANNING: "Planning",
+    TEMP_CONFORT: "Confort",
+    TEMP_ECO: "Éco",
+    TEMP_HORS_GEL: "Hors-gel",
 }
 
 # Room types
@@ -32,46 +38,41 @@ ROOM_TYPES = [
     "autre",
 ]
 
-# Default temperatures by room type
+# Default temperature palette by room type
 DEFAULT_TEMPERATURES = {
-    "salon": {MODE_CONFORT: 20, MODE_ECO: 17, MODE_HORS_GEL: 7},
-    "chambre": {MODE_CONFORT: 18, MODE_ECO: 16, MODE_HORS_GEL: 7},
-    "chambre_enfant": {MODE_CONFORT: 19, MODE_ECO: 17, MODE_HORS_GEL: 7},
-    "bureau": {MODE_CONFORT: 19, MODE_ECO: 17, MODE_HORS_GEL: 7},
-    "salle_de_bain": {MODE_CONFORT: 22, MODE_ECO: 17, MODE_HORS_GEL: 7},
-    "autre": {MODE_CONFORT: 19, MODE_ECO: 17, MODE_HORS_GEL: 7},
+    "salon": {TEMP_CONFORT: 20, TEMP_ECO: 17, TEMP_HORS_GEL: 7},
+    "chambre": {TEMP_CONFORT: 18, TEMP_ECO: 16, TEMP_HORS_GEL: 7},
+    "chambre_enfant": {TEMP_CONFORT: 19, TEMP_ECO: 17, TEMP_HORS_GEL: 7},
+    "bureau": {TEMP_CONFORT: 19, TEMP_ECO: 17, TEMP_HORS_GEL: 7},
+    "salle_de_bain": {TEMP_CONFORT: 22, TEMP_ECO: 17, TEMP_HORS_GEL: 7},
+    "autre": {TEMP_CONFORT: 19, TEMP_ECO: 17, TEMP_HORS_GEL: 7},
 }
 
 # Default parameters
 DEFAULT_UPDATE_INTERVAL = 300  # 5 minutes in seconds
-DEFAULT_SECURITY_FACTOR = 1.3
-DEFAULT_MIN_PREHEAT_TIME = 30  # minutes
-DEFAULT_DERIVATIVE_WINDOW = 30  # minutes
-DEFAULT_HEATING_RATE = 1.0  # °C/h fallback when no data
+DEFAULT_OFFSET = 0.0
 
-# Calendar events
-EVENT_ABSENCE = "absence"
-EVENT_CONFORT = "confort"
+# Setpoint application
+SETPOINT_TOLERANCE = 0.1  # °C below which we consider the radiator already set
 
-# Mode sources
-SOURCE_CALENDAR = "calendrier"
-SOURCE_PRESENCE = "presence"
-SOURCE_DEFAULT = "defaut"
-SOURCE_OVERRIDE = "override"
-SOURCE_ANTICIPATION = "anticipation"
+# Schedule
+SCHEDULE_STEP_MINUTES = 30
+SCHEDULE_SLOTS_PER_DAY = 24 * 60 // SCHEDULE_STEP_MINUTES  # 48
+SCHEDULE_DAYS = 7
 
-# Home states
-STATE_HOME = "home"
-STATE_NOT_HOME = "not_home"
+# Storage
+STORAGE_KEY = f"{DOMAIN}.schedules"
+STORAGE_VERSION = 1
+LEGACY_LEARNING_FILE = f"{DOMAIN}_learned_rates.json"
+
+# Frontend
+PANEL_URL_PATH = "chauffage"
+PANEL_STATIC_PATH = f"/{DOMAIN}_static"
+PANEL_COMPONENT_NAME = "chauffage-intelligent-panel"
 
 # Config keys
-CONF_CALENDAR = "calendar"
-CONF_PRESENCE_TRACKERS = "presence_trackers"
 CONF_PIECES = "pieces"
-CONF_SECURITY_FACTOR = "security_factor"
-CONF_MIN_PREHEAT_TIME = "min_preheat_time"
 CONF_UPDATE_INTERVAL = "update_interval"
-CONF_DERIVATIVE_WINDOW = "derivative_window"
 
 # Piece config keys
 CONF_PIECE_NAME = "name"
@@ -81,3 +82,13 @@ CONF_PIECE_TYPE = "type"
 CONF_PIECE_RADIATEURS = "radiateurs"
 CONF_PIECE_SONDE = "sonde"
 CONF_PIECE_TEMPERATURES = "temperatures"
+CONF_PIECE_OFFSET = "offset"
+
+# Legacy config keys removed in version 2 (kept for migration)
+LEGACY_CONF_KEYS = [
+    "calendar",
+    "presence_trackers",
+    "security_factor",
+    "min_preheat_time",
+    "derivative_window",
+]
