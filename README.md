@@ -182,7 +182,7 @@ Force un recalcul et une réapplication immédiate.
 Ces valeurs ne sont qu'une palette de départ : seules les températures posées dans le
 planning déterminent le chauffage.
 
-## Migration depuis la version 1.x
+## Migration depuis les versions 0.x
 
 La mise à jour est automatique au démarrage :
 

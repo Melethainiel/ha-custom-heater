@@ -8,7 +8,7 @@ hebdomadaire intégré**, édité depuis un panneau dédié.
 Principe directeur : **une température par plage horaire**, appliquée de façon
 déterministe. Aucune dépendance externe, aucune prédiction, aucun apprentissage.
 
-Version 2.0.0 — remplace l'architecture v1 basée sur Google Calendar, la détection de
+Version 1.0.0 — remplace l'architecture 0.x basée sur Google Calendar, la détection de
 présence et l'anticipation de préchauffage.
 
 ---
@@ -300,7 +300,7 @@ Ajouter / modifier / supprimer une pièce, modifier les paramètres. Supprimer u
 
 ---
 
-## Migration v1 → v2
+## Migration du config entry v1 → v2
 
 `async_migrate_entry` :
 
