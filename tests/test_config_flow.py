@@ -13,6 +13,7 @@ from custom_components.chauffage_intelligent.config_flow import (
     _all_temperature_sensors,
     _areas_with_climate,
     _entities_in_area,
+    _palette_remap,
     _room_from_input,
 )
 from custom_components.chauffage_intelligent.const import (
@@ -344,6 +345,53 @@ async def test_options_modify_room_updates_the_entry(options_flow, registries):
     assert data[CONF_PIECES]["bureau"][CONF_PIECE_NAME] == "Bureau"
 
 
+async def test_options_modify_room_leaves_the_entry_untouched(options_flow, registries):
+    """The flow edits a copy, so HA sees a change and reloads the entry."""
+    flow, entry = options_flow
+    flow._selected_room = "bureau"
+
+    await flow.async_step_modify_room({**ROOM_INPUT, "temp_confort": 21})
+
+    assert entry.data[CONF_PIECES]["bureau"][CONF_PIECE_TEMPERATURES][TEMP_CONFORT] == 19
+    data = flow.hass.config_entries.async_update_entry.call_args.kwargs["data"]
+    assert data != entry.data
+
+
+async def test_options_modify_room_remaps_the_schedule(options_flow, registries):
+    """Slots painted with the old comfort value follow the new one."""
+    flow, _ = options_flow
+    flow._selected_room = "bureau"
+    store = MagicMock()
+    store.get = MagicMock(
+        return_value=[
+            {"day": 0, "start": "07:00", "end": "09:00", "temperature": 19.0},
+            {"day": 0, "start": "09:00", "end": "12:00", "temperature": 18.5},
+        ]
+    )
+    store.async_set = AsyncMock()
+    flow.hass.data = {DOMAIN: {"store": store}}
+
+    await flow.async_step_modify_room(
+        {**ROOM_INPUT, "temp_confort": 21, "temp_eco": 17, "temp_hors_gel": 7}
+    )
+
+    piece_id, slots = store.async_set.await_args.args
+    assert piece_id == "bureau"
+    assert [slot["temperature"] for slot in slots] == [21, 18.5]
+
+
+def test_palette_remap():
+    """Only changed, unambiguous palette values are remapped."""
+    assert _palette_remap(
+        {TEMP_CONFORT: 19, TEMP_ECO: 17, TEMP_HORS_GEL: 7},
+        {TEMP_CONFORT: 20, TEMP_ECO: 17, TEMP_HORS_GEL: 7},
+    ) == {19.0: 20.0}
+    assert _palette_remap(
+        {TEMP_CONFORT: 17, TEMP_ECO: 17, TEMP_HORS_GEL: 7},
+        {TEMP_CONFORT: 20, TEMP_ECO: 16, TEMP_HORS_GEL: 7},
+    ) == {}
+
+
 async def test_options_modify_room_prefills_the_form(options_flow, registries):
     """The edit form starts from the room's current values."""
     flow, _ = options_flow
@@ -368,6 +416,7 @@ async def test_options_delete_room_removes_its_schedule(options_flow, registries
     store.async_remove.assert_awaited_once_with("bureau")
     data = flow.hass.config_entries.async_update_entry.call_args.kwargs["data"]
     assert data[CONF_PIECES] == {}
+    assert "bureau" in flow._entry.data[CONF_PIECES]
 
 
 async def test_options_delete_room_without_confirmation(options_flow, registries):

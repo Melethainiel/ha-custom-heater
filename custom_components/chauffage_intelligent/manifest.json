@@ -1,7 +1,7 @@
 {
   "domain": "chauffage_intelligent",
   "name": "Chauffage Intelligent",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "documentation": "https://github.com/Melethainiel/ha-custom-heater",
   "issue_tracker": "https://github.com/Melethainiel/ha-custom-heater/issues",
   "dependencies": [
