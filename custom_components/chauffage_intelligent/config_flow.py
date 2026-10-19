@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Any
 
@@ -367,7 +368,10 @@ class ChauffageIntelligentOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self._entry = config_entry
-        self._data: dict[str, Any] = dict(config_entry.data)
+        # Deep copy: editing the nested rooms in place would also mutate
+        # entry.data, so async_update_entry would see no change and skip the
+        # reload.
+        self._data: dict[str, Any] = copy.deepcopy(dict(config_entry.data))
         self._selected_room: str | None = None
         self._current_area_id: str | None = None
         self._current_area_name: str | None = None
@@ -509,11 +513,35 @@ class ChauffageIntelligentOptionsFlow(config_entries.OptionsFlow):
         area_id = room_config.get(CONF_PIECE_AREA_ID, self._selected_room) or ""
 
         if user_input is not None:
-            self._data[CONF_PIECES][self._selected_room] = _room_from_input(
+            new_config = _room_from_input(
                 user_input,
                 room_config.get(CONF_PIECE_NAME, self._selected_room),
                 area_id,
             )
+            self._data[CONF_PIECES][self._selected_room] = new_config
+
+            # Slots painted with a palette temperature follow its new value.
+            store: ScheduleStore | None = self.hass.data.get(DOMAIN, {}).get("store")
+            if store is not None:
+                remap = _palette_remap(
+                    room_config.get(CONF_PIECE_TEMPERATURES, {}),
+                    new_config[CONF_PIECE_TEMPERATURES],
+                )
+                slots = store.get(self._selected_room)
+                if remap and slots:
+                    await store.async_set(
+                        self._selected_room,
+                        [
+                            {
+                                **slot,
+                                "temperature": remap.get(
+                                    float(slot["temperature"]), slot["temperature"]
+                                ),
+                            }
+                            for slot in slots
+                        ],
+                    )
+
             return await self._async_commit()
 
         return self.async_show_form(
@@ -579,6 +607,28 @@ class ChauffageIntelligentOptionsFlow(config_entries.OptionsFlow):
                 self._data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
             ),
         )
+
+
+def _palette_remap(old: dict[str, Any], new: dict[str, Any]) -> dict[float, float]:
+    """Map each changed palette temperature from its old value to its new one.
+
+    A value shared by several palette entries that now diverge is ambiguous,
+    so it is left alone.
+    """
+    remap: dict[float, float] = {}
+    ambiguous: set[float] = set()
+    for key in (TEMP_CONFORT, TEMP_ECO, TEMP_HORS_GEL):
+        if key not in old or key not in new:
+            continue
+        before, after = float(old[key]), float(new[key])
+        if before in remap and remap[before] != after:
+            ambiguous.add(before)
+        remap[before] = after
+    return {
+        before: after
+        for before, after in remap.items()
+        if before not in ambiguous and before != after
+    }
 
 
 def _room_options(pieces: dict[str, Any]) -> list[dict[str, str]]:

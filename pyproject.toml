@@ -1,6 +1,6 @@
 [project]
 name = "chauffage-intelligent"
-version = "1.0.0"
+version = "1.0.1"
 description = "Home Assistant custom component for intelligent heating management"
 readme = "README.md"
 requires-python = ">=3.11"
